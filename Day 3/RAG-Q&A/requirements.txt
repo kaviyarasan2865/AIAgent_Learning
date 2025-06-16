@@ -1,0 +1,8 @@
+langchain
+chromadb
+sentence-transformers
+PyPDF2
+pdfplumber
+tqdm
+transformers
+torch
