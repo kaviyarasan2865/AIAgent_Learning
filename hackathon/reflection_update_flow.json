@@ -1,0 +1,17 @@
+{
+  "name": "UX Reflection Flow",
+  "nodes": [
+    { "id": "input1", "type": "Input" },
+    { "id": "reflection_prompt", "type": "PromptTemplate",
+      "template": "CALL_TOOL: reflection_agent(code={{input1}})" },
+    { "id": "update_prompt", "type": "PromptTemplate",
+      "template": "CALL_TOOL: update_code_agent({\"code\": {{input1}}, \"reflection\": {{reflection_prompt}} })" },
+    { "id": "output1", "type": "Output", "source": "update_prompt" }
+  ],
+  "connections": [
+    { "source": "input1", "target": "reflection_prompt" },
+    { "source": "reflection_prompt", "target": "update_prompt" },
+    { "source": "input1", "target": "update_prompt" },
+    { "source": "update_prompt", "target": "output1" }
+  ]
+}
