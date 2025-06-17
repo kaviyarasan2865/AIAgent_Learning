@@ -35,7 +35,11 @@ def main():
         
         print("\n=== Benchmark Analysis ===")
         if results["benchmark_analysis"]:
-            print(results["benchmark_analysis"].get("output", "No benchmark analysis available"))
+            print("\nAnalysis:")
+            print(results["benchmark_analysis"].get("output", {}).get("analysis"))
+            print("\nSources Used:")
+            for source in results["benchmark_analysis"].get("output", {}).get("sources", []):
+                print(f"- {source[:200]}...")
         
         print("\n=== UX Recommendations ===")
         if results["ux_recommendations"]:

@@ -4,6 +4,17 @@ from langchain_core.tools import Tool
 from langchain_core.prompts import PromptTemplate
 from langchain.agents import AgentType, initialize_agent
 from typing import Dict, List
+from langchain_community.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import FAISS
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain.chains import RetrievalQA
+import google.generativeai as genai
+import os
+
+# Set your Google API key
+os.environ["GOOGLE_API_KEY"] = "AIzaSyAPDRVzZucpwUvOClVQgbjwmCcMgRxnDU4"  # Replace with your actual API key
+genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
 # Initialize Gemini with API key
 gemini = GeminiLLM(api_key="AIzaSyAPDRVzZucpwUvOClVQgbjwmCcMgRxnDU4")
@@ -84,15 +95,76 @@ def detect_friction(input_dict: Dict[str, str]) -> str:
     final_prompt = template.format(**input_dict)
     return gemini.invoke(final_prompt)
 
-def benchmark_site(input_dict: Dict[str, str]) -> str:
-    template = PromptTemplate.from_template(benchmark_template)
-    final_prompt = template.format(**input_dict)
+def optimize_ux(input_dict: Dict[str, str]) -> str:
+    """
+    Generates UX optimization recommendations based on analysis results
+    """
+    html_content = input_dict.get("html_content", "")
+    user_journey = input_dict.get("user_journey", "")
+    friction_points = input_dict.get("friction_points", "")
+    benchmark_analysis = input_dict.get("benchmark_analysis", "")
+
+    template = PromptTemplate.from_template(ux_template)
+    final_prompt = template.format(
+        html_content=html_content,
+        user_journey=user_journey,
+        friction_points=friction_points,
+        benchmark_analysis=benchmark_analysis
+    )
+    
     return gemini.invoke(final_prompt)
 
-def optimize_ux(input_dict: Dict[str, str]) -> str:
-    template = PromptTemplate.from_template(ux_template)
-    final_prompt = template.format(**input_dict)
-    return gemini.invoke(final_prompt)
+# Initialize embeddings and load PDF
+embeddings = GoogleGenerativeAIEmbeddings(
+    google_api_key=os.environ["GOOGLE_API_KEY"],
+    model="models/embedding-001"
+)
+loader = PyPDFLoader("data/best_practices.pdf")
+documents = loader.load()
+
+# Split documents
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1000,
+    chunk_overlap=200
+)
+splits = text_splitter.split_documents(documents)
+
+# Create vector store
+vectorstore = FAISS.from_documents(splits, embeddings)
+
+# Create RAG chain
+rag_chain = RetrievalQA.from_chain_type(
+    llm=gemini,
+    retriever=vectorstore.as_retriever(),
+    return_source_documents=True
+)
+
+def benchmark_site(input_dict: Dict[str, str]) -> str:
+    # Extract HTML content
+    html_content = input_dict.get("html_content", "")
+    
+    # Create benchmark query
+    query = f"""
+    Compare this website HTML:
+    {html_content}
+    
+    With industry best practices for:
+    1. Navigation patterns
+    2. CTA placement and hierarchy
+    3. Content structure
+    4. User flow optimization
+    5. Conversion funnel design
+    
+    Provide specific areas where the site deviates from best practices.
+    """
+    
+    # Get RAG response
+    result = rag_chain.invoke(query)
+    
+    return {
+        "analysis": result["result"],
+        "sources": [doc.page_content for doc in result["source_documents"]]
+    }
 
 # Create Tools
 user_flow_tool = Tool(
@@ -107,10 +179,11 @@ friction_tool = Tool(
     description="Identifies friction points and conversion barriers"
 )
 
+# Update benchmark tool
 benchmark_tool = Tool(
     name="benchmark_site",
     func=benchmark_site,
-    description="Compares site structure with industry best practices"
+    description="Uses RAG to compare site structure with documented industry best practices"
 )
 
 ux_tool = Tool(
