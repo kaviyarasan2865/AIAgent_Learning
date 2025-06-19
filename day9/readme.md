@@ -64,7 +64,7 @@ streamlit run ui.py
 ```
 
 3. Open your browser and navigate to:
-- API: http://localhost:8000
+- API: http://127.0.0.1:8000
 - UI: http://localhost:8501
 
 ## 📊 Usage

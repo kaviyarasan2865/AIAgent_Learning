@@ -199,7 +199,7 @@ user_flow_agent = initialize_agent(
     agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
     verbose=True,
     handle_parsing_errors=True,
-    max_iterations=3
+    max_iterations=1
 )
 
 friction_agent = initialize_agent(
@@ -208,7 +208,7 @@ friction_agent = initialize_agent(
     agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
     verbose=True,
     handle_parsing_errors=True,
-    max_iterations=3
+    max_iterations=1
 )
 
 benchmark_agent = initialize_agent(
@@ -217,7 +217,7 @@ benchmark_agent = initialize_agent(
     agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
     verbose=True,
     handle_parsing_errors=True,
-    max_iterations=3
+    max_iterations=1
 )
 
 ux_agent = initialize_agent(
@@ -226,7 +226,7 @@ ux_agent = initialize_agent(
     agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
     verbose=True,
     handle_parsing_errors=True,
-    max_iterations=3
+    max_iterations=1
 )
 
 # Update the analyze_and_optimize_site function
