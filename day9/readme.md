@@ -31,8 +31,8 @@ Many websites, despite being visually appealing, suffer from high bounce rates d
 
 1. Clone the repository:
 ```bash
-git clone [repository-url]
-cd conversion-obstacle-analyzer
+git clone https://github.com/kaviyarasanIhub/Agentic_AI_Workshop.git
+direct to appropriate folder(day9)
 ```
 
 2. Create and activate virtual environment:
@@ -101,14 +101,3 @@ Analyzes a website for friction points and improvements.
 }
 ```
 
-## 📝 License
-
-MIT License
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Open a pull request
