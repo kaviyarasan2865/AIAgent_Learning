@@ -31,7 +31,7 @@ Many websites, despite being visually appealing, suffer from high bounce rates d
 
 1. Clone the repository:
 ```bash
-git clone 
+git clone https://github.com/kaviyarasanIhub/Agentic_AI_Workshop.git
 direct to appropriate folder(day9)
 ```
 
