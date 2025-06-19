@@ -9,7 +9,7 @@ st.set_page_config(
 )
 
 def analyze_website(html_content, personas):
-    url = "http://localhost:8000/analyze"
+    url = "http://127.0.0.1:8000/analyze"
     payload = {
         "html_content": html_content,
         "personas": personas
