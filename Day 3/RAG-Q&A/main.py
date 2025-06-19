@@ -1,35 +1,69 @@
 # main.py
 
-from retriever import load_chroma_retriever
-from generator import LocalAnswerGenerator
+import google.generativeai as genai
+from retriever import DocumentRetriever
+import os
+from dotenv import load_dotenv
 
-def rag_pipeline():
-    # Step 1: Load retriever from Chroma DB
-    retriever = load_chroma_retriever()
+# Load environment variables
+load_dotenv()
 
-    # Step 2: Load local LLM-based answer generator
-    generator = LocalAnswerGenerator()
+class GeminiGenerator:
+    def __init__(self):
+        api_key = os.getenv('GOOGLE_API_KEY')
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY not found in environment variables")
+        genai.configure(api_key=api_key)
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
 
-    # Step 3: Ask user a question
-    print("\n💬 Ask a question about your PDFs:")
-    question = input(">> ")
+    def generate_answer(self, question: str, context: str) -> str:
+        prompt = f"""You are a helpful AI assistant. Using only the information from the provided context, 
+answer the question. If the context doesn't contain relevant information, say so.
 
-    # Step 4: Retrieve relevant documents
-    docs = retriever.get_relevant_documents(question)
-    if not docs:
-        print("⚠️ No relevant documents found.")
-        return
+Context: {context}
 
-    # Step 5: Create a context from top documents
-    context = "\n".join([doc.page_content for doc in docs[:4]])
+Question: {question}
 
-    # Step 6: Generate answer using local LLM
-    print("\n🧠 Generating answer...")
-    answer = generator.generate_answer(question, context)
+Provide a clear, focused answer based solely on the context provided."""
 
-    # Step 7: Show the answer
-    print("\n📌 Answer:")
-    print(answer)
+        try:
+            response = self.model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            return f"Error generating response: {str(e)}"
+
+def main():
+    try:
+        # Initialize components
+        retriever = DocumentRetriever()
+        generator = GeminiGenerator()
+
+        while True:
+            print("\n💬 Ask a question about your PDFs:")
+            question = input(">> ")
+            
+            if question.lower() in ['quit', 'exit', 'q']:
+                break
+
+            # Get relevant documents
+            docs = retriever.get_relevant_documents(question)
+            if not docs:
+                print("⚠️ No relevant documents found. Make sure documents are properly indexed.")
+                continue
+
+            # Create context from documents
+            context = "\n".join([f"Document {i+1}: {doc.page_content}" 
+                               for i, doc in enumerate(docs)])
+
+            # Generate answer
+            print("\n🧠 Generating answer...")
+            answer = generator.generate_answer(question, context)
+            
+            print("\n📌 Answer:")
+            print(answer)
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
 if __name__ == "__main__":
-    rag_pipeline()
+    main()

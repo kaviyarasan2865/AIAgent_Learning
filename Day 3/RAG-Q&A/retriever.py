@@ -1,22 +1,34 @@
 # retriever.py
 
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
+import os
 
-CHROMA_DIR = "chroma_db"
-
-def load_chroma_retriever(persist_directory=CHROMA_DIR):
-    """
-    Loads the Chroma vector store and returns a retriever object.
-    """
-    print(f"Loading Chroma DB from: {persist_directory}")
-
-    embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-
-    vectordb = Chroma(
-        persist_directory=persist_directory,
-        embedding_function=embedding_model
-    )
-
-    retriever = vectordb.as_retriever(search_kwargs={"k": 4})  # k = top 4 chunks
-    return retriever
+class DocumentRetriever:
+    def __init__(self, persist_directory="chroma_db"):
+        print(f"Loading Chroma DB from: {persist_directory}")
+        # Use the same model that was used for indexing (384 dimensions)
+        self.embedding_model = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",  # This model has 384 dimensions
+            model_kwargs={'device': 'cpu'}
+        )
+        
+        # Check if DB exists
+        if not os.path.exists(persist_directory):
+            print("⚠️ Warning: No existing database found. Please run the indexing script first.")
+            return
+            
+        self.vectordb = Chroma(
+            persist_directory=persist_directory,
+            embedding_function=self.embedding_model
+        )
+    
+    def get_relevant_documents(self, query: str, k: int = 4):
+        try:
+            if not hasattr(self, 'vectordb'):
+                raise Exception("Database not initialized. Please run the indexing script first.")
+            docs = self.vectordb.similarity_search(query, k=k)
+            return docs
+        except Exception as e:
+            print(f"Error retrieving documents: {e}")
+            return []
