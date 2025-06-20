@@ -15,7 +15,8 @@ class FixGeneratorAgent:
             agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
             agent_kwargs={"prompt": self._get_prompt()},
             verbose=True,
-            handle_parsing_errors=True
+            handle_parsing_errors=True,
+            iterations=1
         )
 
     def _get_tools(self) -> List[Tool]:
@@ -66,6 +67,8 @@ Response should be in JSON format with:
 - code_snippets: before/after code
 - compatibility_notes: any potential conflicts
 - implementation_steps: how to apply fixes
+
+IMPORTANT: Only use the available tools. Do NOT use 'manual fix', 'None', or any unsupported action. If a fix cannot be automated, return a message explaining why.
 
 Let's generate some solutions!""",
             input_variables=["input", "tools", "tool_names", "agent_scratchpad"]
@@ -154,14 +157,26 @@ Let's generate some solutions!""",
 
     def run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Generate fixes for all issues"""
-        # Summarize issues for the agent
         issues = input_data.get('issues', {})
         summary = f"Layout Issues: {issues.get('layout', [])}\nContent Issues: {issues.get('content', [])}"
         result = self.executor.run(input=summary)
-        # If the result is a dict and contains a tool/action name, check if it's valid
         valid_tools = ["generate_layout_fix", "generate_content_fix", "generate_js_fix"]
+        manual_fix_required = []
+        # Check if the result is a dict and contains a tool/action name
         if isinstance(result, dict):
             action_name = result.get("tool") or result.get("action")
             if action_name and action_name not in valid_tools:
-                return {"result": "No further tool use required. Here is the summary: {}".format(result)}
+                # If the agent tried an unsupported action, log as manual fix required
+                manual_fix_required.append({
+                    "issue": summary,
+                    "reason": f"Cannot auto-fix with available tools. Action '{action_name}' is not supported."
+                })
+                return {"fixes": [], "manual_fix_required": manual_fix_required}
+        # If result is just a general suggestion, not a real fix
+        if (isinstance(result, dict) and not result.get("fixes")) or (isinstance(result, str) and 'best practice' in result):
+            manual_fix_required.append({
+                "issue": summary,
+                "reason": "No automated fix could be generated. Manual intervention required."
+            })
+            return {"fixes": [], "manual_fix_required": manual_fix_required}
         return result

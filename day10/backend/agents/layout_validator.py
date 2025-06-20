@@ -17,7 +17,8 @@ class LayoutValidatorAgent:
             agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
             agent_kwargs={"prompt": self._get_prompt()},
             verbose=True,
-            handle_parsing_errors=True
+            handle_parsing_errors=True,
+            iterations=1
         )
 
     def _get_tools(self) -> List[Tool]:

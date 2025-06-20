@@ -15,7 +15,8 @@ class UserApprovalAgent:
             agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
             agent_kwargs={"prompt": self._get_prompt()},
             verbose=True,
-            handle_parsing_errors=True
+            handle_parsing_errors=True,
+            iterations=1
         )
 
     def _get_tools(self) -> List[Tool]:
@@ -156,5 +157,10 @@ Let's manage these changes!""",
 
     def run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         changes = input_data.get('changes', {})
+        manual_fixes = input_data.get('manual_fix_required', [])
         summary = f"Proposed Changes: {changes}"
-        return self.executor.run(input=summary)
+        result = self.executor.run(input=summary)
+        # Attach manual fixes to the result for the approval dashboard
+        if manual_fixes:
+            result['manual_fix_required'] = manual_fixes
+        return result
