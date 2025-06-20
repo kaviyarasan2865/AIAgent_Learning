@@ -97,31 +97,38 @@ Let's generate some solutions!""",
             
         return {"fixes": fixes}
 
-    def _generate_content_fix(self, issue: Dict) -> Dict:
-        """Generate fixes for content issues"""
+    def _generate_content_fix(self, issues) -> Dict:
+        """Generate fixes for content issues. Accepts a list of issues or a single issue."""
         fixes = []
-        
-        if issue.get("type") == "placeholder":
-            fixes.append({
-                "type": "content_fix",
-                "before": "Lorem ipsum dolor sit amet",
-                "after": "[Add relevant content here]",
-                "explanation": "Remove lorem ipsum placeholder"
-            })
-        elif issue.get("type") == "missing_image":
-            fixes.append({
-                "type": "html_fix",
-                "before": '<img src="#" alt="">',
-                "after": '<img src="path/to/image.jpg" alt="Descriptive text">',
-                "explanation": "Add proper image source and alt text"
-            })
-            
+        # Accept both a single dict or a list
+        if isinstance(issues, dict):
+            issues = [issues]
+        for issue in issues:
+            if not isinstance(issue, dict):
+                # Optionally log or skip non-dict issues
+                continue
+            if issue.get("type") == "placeholder":
+                fixes.append({
+                    "type": "content_fix",
+                    "before": "Lorem ipsum dolor sit amet",
+                    "after": "[Add relevant content here]",
+                    "explanation": "Remove lorem ipsum placeholder"
+                })
+            elif issue.get("type") == "missing_image":
+                fixes.append({
+                    "type": "html_fix",
+                    "before": '<img src="#" alt="">',
+                    "after": '<img src="path/to/image.jpg" alt="Descriptive text">',
+                    "explanation": "Add proper image source and alt text"
+                })
         return {"fixes": fixes}
 
-    def _generate_js_fix(self, issue: Dict) -> Dict:
-        """Generate fixes for JavaScript issues"""
+    def _generate_js_fix(self, issue) -> Dict:
+        """Generate fixes for JavaScript issues. Accepts a dict or a string."""
         fixes = []
-        
+        if not isinstance(issue, dict):
+            # Optionally log or skip non-dict issues
+            return {"fixes": fixes}
         if issue.get("type") == "syntax_error":
             fixes.append({
                 "type": "js_fix",
@@ -134,9 +141,15 @@ Let's generate some solutions!""",
                 "type": "js_fix",
                 "before": "if (obj.property)",
                 "after": "if (obj && obj.property)",
-                "explanation": "Added null check to prevent reference error"
+                "explanation": "Added null check for obj"
             })
-            
+        elif issue.get("type") == "missing_element":
+            fixes.append({
+                "type": "js_fix",
+                "before": "document.getElementById('missing-id').innerText = 'Clicked!';",
+                "after": "var el = document.getElementById('missing-id');\nif (el) { el.innerText = 'Clicked!'; }",
+                "explanation": "Added check for missing element before accessing innerText"
+            })
         return {"fixes": fixes}
 
     def run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -144,4 +157,11 @@ Let's generate some solutions!""",
         # Summarize issues for the agent
         issues = input_data.get('issues', {})
         summary = f"Layout Issues: {issues.get('layout', [])}\nContent Issues: {issues.get('content', [])}"
-        return self.executor.run(input=summary)
+        result = self.executor.run(input=summary)
+        # If the result is a dict and contains a tool/action name, check if it's valid
+        valid_tools = ["generate_layout_fix", "generate_content_fix", "generate_js_fix"]
+        if isinstance(result, dict):
+            action_name = result.get("tool") or result.get("action")
+            if action_name and action_name not in valid_tools:
+                return {"result": "No further tool use required. Here is the summary: {}".format(result)}
+        return result

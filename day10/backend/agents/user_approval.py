@@ -71,14 +71,16 @@ Let's manage these changes!""",
             input_variables=["input", "tools", "tool_names", "agent_scratchpad"]
         )
 
-    def _generate_summary(self, changes: Dict) -> Dict:
-        """Generate a summary of proposed changes"""
+    def _generate_summary(self, changes) -> Dict:
+        """Generate a summary of proposed changes. Handles both dict and string input."""
         summary = {
             "layout_changes": [],
             "content_changes": [],
             "optimizations": []
         }
-        
+        if not isinstance(changes, dict):
+            # If changes is a string, just return it as a summary
+            return {"summary": {"note": str(changes)}}
         # Summarize layout changes
         for change in changes.get("layout", []):
             if not isinstance(change, dict):
@@ -88,7 +90,6 @@ Let's manage these changes!""",
                 "description": change.get("explanation"),
                 "impact": "medium"  # Could be determined based on change scope
             })
-            
         # Summarize content changes
         for change in changes.get("content", []):
             if not isinstance(change, dict):
@@ -98,7 +99,6 @@ Let's manage these changes!""",
                 "description": change.get("explanation"),
                 "impact": "low"
             })
-            
         # Summarize optimizations
         for change in changes.get("optimizations", []):
             if not isinstance(change, dict):
@@ -108,13 +108,14 @@ Let's manage these changes!""",
                 "description": change.get("suggestion"),
                 "impact": "high"
             })
-            
         return {"summary": summary}
 
-    def _create_diff_view(self, changes: Dict) -> Dict:
-        """Create side-by-side diff view"""
+    def _create_diff_view(self, changes) -> Dict:
+        """Create side-by-side diff view. Handles both dict and string input."""
         diff_views = []
-        
+        if not isinstance(changes, dict):
+            # If changes is a string, return a note
+            return {"diff_views": [{"note": str(changes)}]}
         for change_type, changes_list in changes.items():
             for change in changes_list:
                 if not isinstance(change, dict):
@@ -129,19 +130,27 @@ Let's manage these changes!""",
                         "after": change.get("after_line", 0)
                     }
                 })
-                
         return {"diff_views": diff_views}
 
-    def _save_approval_log(self, decision: Dict) -> Dict:
-        """Save approval decision to audit log"""
-        log_entry = {
-            "timestamp": decision.get("timestamp"),
-            "change_id": decision.get("change_id"),
-            "status": decision.get("status"),
-            "approver": decision.get("approver"),
-            "comments": decision.get("comments")
-        }
-        
+    def _save_approval_log(self, decision) -> Dict:
+        """Save approval decision to audit log. Handles both dict and string input."""
+        if not isinstance(decision, dict):
+            # If decision is a string, log it as a comment
+            log_entry = {
+                "timestamp": None,
+                "change_id": None,
+                "status": None,
+                "approver": None,
+                "comments": str(decision)
+            }
+        else:
+            log_entry = {
+                "timestamp": decision.get("timestamp"),
+                "change_id": decision.get("change_id"),
+                "status": decision.get("status"),
+                "approver": decision.get("approver"),
+                "comments": decision.get("comments")
+            }
         # In a real implementation, this would save to a database
         return {"log_entry": log_entry}
 
