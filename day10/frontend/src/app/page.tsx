@@ -14,22 +14,33 @@ export default function Home() {
   const [auditLog, setAuditLog] = useState<any[]>([]);
 
   async function handleAnalyze(data: any) {
-    // Call the Next.js API route that proxies to FastAPI
-    const res = await fetch('/api/bug-fix', {
+    // Call FastAPI backend directly
+    const res = await fetch('http://localhost:8000/api/bug-fix', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ input_data: data })
     });
+    if (!res.ok) {
+      alert('Failed to analyze code.');
+      return;
+    }
     const result = await res.json();
-    // You can update state with result.result or handle errors
-    setFixes(result.result);
-    // Optionally set issues, dashboard, etc. from result
+    // Backend returns { result: { status, message, dashboard, ... } }
+    setFixes(result.result?.dashboard?.diff_views || []);
+    setIssues(result.result?.issues || []);
+    setDashboard(result.result?.dashboard || null);
+    setSubmissionId(result.result?.submission_id || null);
   }
 
   async function handleApproval(approved: boolean) {
     if (!submissionId) return;
-    const res = await fetch('/api/approval', { method: 'POST', body: JSON.stringify({ codeSubmissionId: submissionId, approved, user: 'user1' }) });
-    const approval = await res.json();
+    // Simulate approval API (implement if backend supports)
+    const approval = {
+      timestamp: new Date().toISOString(),
+      status: approved ? 'approved' : 'rejected',
+      approver: 'user1',
+      comments: approved ? 'Approved by user' : 'Rejected by user',
+    };
     setAuditLog(logs => [...logs, approval]);
     setDashboard(null);
   }

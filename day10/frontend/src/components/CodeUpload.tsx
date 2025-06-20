@@ -6,12 +6,26 @@ export default function CodeUpload({ onSubmit }: { onSubmit: (data: any) => void
   const [css, setCss] = useState('');
   const [js, setJs] = useState('');
 
+  const handleAnalyze = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Call FastAPI backend directly
+    const res = await fetch('http://localhost:8000/api/bug-fix', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input_data: { html, css, javascript: js } })
+    });
+    if (!res.ok) {
+      alert('Failed to analyze code.');
+      return;
+    }
+    const result = await res.json();
+    // Optionally, you can pass result to a parent handler if needed
+    if (typeof onSubmit === 'function') onSubmit(result);
+  };
+
   return (
     <form
-      onSubmit={e => {
-        e.preventDefault();
-        onSubmit({ html, css, javascript: js });
-      }}
+      
       className="space-y-6 max-w-2xl mx-auto bg-gradient-to-br from-white/80 to-blue-100 dark:from-gray-900/80 dark:to-blue-950 shadow-2xl rounded-3xl p-8 border border-blue-200 dark:border-blue-900 backdrop-blur-lg mt-10"
     >
       <h2 className="text-2xl font-extrabold text-blue-800 dark:text-blue-300 mb-4 flex items-center gap-2">
@@ -36,7 +50,7 @@ export default function CodeUpload({ onSubmit }: { onSubmit: (data: any) => void
         </div>
       </div>
       <div className="flex justify-end mt-6">
-        <button type="submit" className="px-8 py-3 bg-gradient-to-r from-blue-500 to-emerald-500 hover:from-blue-600 hover:to-emerald-600 text-white font-bold rounded-2xl shadow-lg transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-400 text-lg flex items-center gap-2">
+        <button onClick={handleAnalyze} className="px-8 py-3 bg-gradient-to-r from-blue-500 to-emerald-500 hover:from-blue-600 hover:to-emerald-600 text-white font-bold rounded-2xl shadow-lg transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-400 text-lg flex items-center gap-2">
           <svg width='22' height='22' fill='none' viewBox='0 0 24 24'><circle cx='12' cy='12' r='10' fill='#2563eb' opacity='0.15'/><path d='M8 12l2 2 4-4' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg>
           Analyze
         </button>
