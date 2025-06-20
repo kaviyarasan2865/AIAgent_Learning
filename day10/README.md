@@ -19,10 +19,17 @@ This project is an end-to-end AI-powered debugging assistant for web code (HTML,
         |                            v                                 v
         |                  +-------------------+         +-------------------+
         |                  |                   |         |                   |
-        |                  |  Database (Mongo) |         |  ChromaDB (RAG)   |
+        |                  |  MongoDB (via     |         |  ChromaDB (RAG)   |
+        |                  |  Next.js API)     |         |                   |
         |                  |                   |         |                   |
         |                  +-------------------+         +-------------------+
 ```
+
+- **Frontend (Next.js/React):** Handles UI, user uploads, and also provides API routes for MongoDB (saving/fetching submissions, issues, fixes, approvals, audit logs, etc.).
+- **FastAPI Backend:** Purely for AI bug-fixing workflow (LangGraph agents). No direct DB access.
+- **LangGraph Agent Workflow:** Orchestrates all AI agents for bug detection, fix suggestion, optimization, and approval.
+- **MongoDB:** Accessed only via Next.js API routes (not by FastAPI). Used for storing all user data, issues, fixes, and logs.
+- **ChromaDB:** Used by the Code Optimizer agent for RAG-based best practices.
 
 ---
 
@@ -93,7 +100,7 @@ This project is an end-to-end AI-powered debugging assistant for web code (HTML,
 - **AuditLog:** Logs all user actions and agent decisions for transparency.
 
 ### How the Frontend Calls FastAPI
-- Uses `fetch('http://localhost:8000/api/bug-fix', { ... })` to send code for analysis.
+- Uses `fetch('http://127.0.0.1:8000/api/bug-fix', { ... })` to send code for analysis.
 - Handles CORS automatically (FastAPI is configured for it).
 - Parses the backend response and updates UI components accordingly.
 - Displays both automated and manual fix requirements for user review.

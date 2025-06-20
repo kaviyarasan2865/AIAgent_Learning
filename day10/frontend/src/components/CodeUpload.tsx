@@ -9,7 +9,7 @@ export default function CodeUpload({ onSubmit }: { onSubmit: (data: any) => void
   const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault();
     // Call FastAPI backend directly
-    const res = await fetch('http://localhost:8000/api/bug-fix', {
+    const res = await fetch('http://127.0.0.1:8000/api/bug-fix', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ input_data: { html, css, javascript: js } })
