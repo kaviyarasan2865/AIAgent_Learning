@@ -72,3 +72,6 @@ Thumbs.db
 # Chroma DB
 optimization_db/
 chroma_db/
+
+# Python virtual environments
+venv/
