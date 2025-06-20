@@ -14,13 +14,16 @@ export default function Home() {
   const [auditLog, setAuditLog] = useState<any[]>([]);
 
   async function handleAnalyze(data: any) {
-    const res = await fetch('/api/submit', { method: 'POST', body: JSON.stringify(data) });
-    const { id } = await res.json();
-    setSubmissionId(id);
-    // Fetch issues and fixes
-    const issuesRes = await fetch(`/api/issues/${id}`);
-    setIssues(await issuesRes.json());
-    // ...fetch fixes, dashboard, etc.
+    // Call the Next.js API route that proxies to FastAPI
+    const res = await fetch('/api/bug-fix', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input_data: data })
+    });
+    const result = await res.json();
+    // You can update state with result.result or handle errors
+    setFixes(result.result);
+    // Optionally set issues, dashboard, etc. from result
   }
 
   async function handleApproval(approved: boolean) {
