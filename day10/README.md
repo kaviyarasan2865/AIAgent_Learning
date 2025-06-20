@@ -7,23 +7,8 @@ This project is an end-to-end AI-powered debugging assistant for web code (HTML,
 
 ## Architecture Diagram
 
-```
-+-------------------+         +-------------------+         +-------------------+
-|                   |  HTTP   |                   |  Agent  |                   |
-|    Frontend       +-------->+     FastAPI        +------->+   LangGraph        |
-|  (Next.js/React)  |  REST   |   (Python API)    |  Calls  |  (Agent Workflow)  |
-|                   |         |                   |         |                   |
-+-------------------+         +-------------------+         +-------------------+
-        |                            |                                 |
-        |                            |                                 |
-        |                            v                                 v
-        |                  +-------------------+         +-------------------+
-        |                  |                   |         |                   |
-        |                  |  MongoDB (via     |         |  ChromaDB (RAG)   |
-        |                  |  Next.js API)     |         |                   |
-        |                  |                   |         |                   |
-        |                  +-------------------+         +-------------------+
-```
+![Logo](./documents/diagram-export-6-20-2025-3_26_30-PM.png)
+
 
 - **Frontend (Next.js/React):** Handles UI, user uploads, and also provides API routes for MongoDB (saving/fetching submissions, issues, fixes, approvals, audit logs, etc.).
 - **FastAPI Backend:** Purely for AI bug-fixing workflow (LangGraph agents). No direct DB access.
@@ -107,31 +92,13 @@ This project is an end-to-end AI-powered debugging assistant for web code (HTML,
 
 ---
 
-## Full System Architecture
-
-```mermaid
-graph TD
-    A[User Uploads Code] --> B[Frontend (Next.js/React)]
-    B -->|POST /api/bug-fix| C[FastAPI Backend]
-    C -->|LangGraph Orchestration| D[Layout Validator Agent]
-    D --> E[Content Healer Agent]
-    E --> F[Fix Generator Agent]
-    F --> G[Code Optimizer Agent (RAG)]
-    G --> H[User Approval Agent]
-    H --> I[Frontend Approval Dashboard]
-    I --> J[Audit Log/Database]
-    F -->|ChromaDB| K[Best Practices Corpus]
-```
-
----
-
 ## Key Technologies
 - **LangGraph:** Agent workflow orchestration
 - **LangChain Agents:** Modular, prompt-driven agents
 - **ChromaDB:** RAG for code optimization
 - **FastAPI:** High-performance Python API
 - **Next.js/React:** Modern, responsive frontend
-- **MongoDB:** (Optional) For storing submissions, issues, and logs
+- **MongoDB:** For storing submissions, issues, and logs
 
 ---
 
@@ -156,7 +123,7 @@ graph TD
 ---
 
 ## Credits
-- Built with [LangGraph](https://github.com/langchain-ai/langgraph), [LangChain](https://python.langchain.com/), [FastAPI](https://fastapi.tiangolo.com/), [Next.js](https://nextjs.org/), and [ChromaDB](https://www.trychroma.com/).
+- Built with [LangGraph](https://github.com/langchain-ai/langgraph), [LangChain](https://python.langchain.com/), [FastAPI](https://fastapi.tiangolo.com/), [Next.js](https://nextjs.org/), [MongoDB](https://www.mongodb.com/) and [ChromaDB](https://www.trychroma.com/).
 
 ---
 
@@ -172,3 +139,5 @@ graph TD
 
 ## Contact
 For questions or contributions, open an issue or pull request on this repository.
+
+Used free llm resource(gemini-1.5.-flash) with limitations in Input/Output token and raised ResourceExhausted: 429 Resource has been exhausted (e.g. check quota)..  
