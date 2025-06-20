@@ -12,6 +12,7 @@ export default function Home() {
   const [fixes, setFixes] = useState<any[]>([]);
   const [dashboard, setDashboard] = useState<any>(null);
   const [auditLog, setAuditLog] = useState<any[]>([]);
+  const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
 
   async function handleAnalyze(data: any) {
     // Call FastAPI backend directly
@@ -25,7 +26,16 @@ export default function Home() {
       return;
     }
     const result = await res.json();
-    // Backend returns { result: { status, message, dashboard, ... } }
+    // Handle approval required response
+    if (result.result?.status === 'pending' && result.result?.message) {
+      setApprovalMessage(result.result.message);
+      setFixes([]);
+      setIssues([]);
+      setDashboard(null);
+      setSubmissionId(null);
+      return;
+    }
+    setApprovalMessage(null);
     setFixes(result.result?.dashboard?.diff_views || []);
     setIssues(result.result?.issues || []);
     setDashboard(result.result?.dashboard || null);
@@ -49,6 +59,11 @@ export default function Home() {
     <main className="max-w-4xl mx-auto p-6 bg-card rounded-lg shadow-lg mt-8">
       <h1 className="text-3xl font-extrabold text-primary mb-6">Agentic AI Bug Fixer</h1>
       <CodeUpload onSubmit={handleAnalyze} />
+      {approvalMessage && (
+        <div className="my-4 p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 rounded">
+          {approvalMessage}
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
         <IssueReport issues={issues} />
         <FixPreview diffs={fixes} />
