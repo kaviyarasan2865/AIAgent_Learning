@@ -2,6 +2,7 @@ from langchain.agents.agent import AgentExecutor
 from langgraph.graph import Graph, StateGraph
 from typing import Dict, TypedDict, Annotated, Sequence
 import operator
+import re
 
 from agents.layout_validator import LayoutValidatorAgent
 from agents.content_healer import ContentHealerAgent
@@ -74,6 +75,40 @@ def create_bug_fixer_graph() -> Graph:
         state["approval"] = result
         return state
     
+    def apply_fixes_to_code(original_code: str, fixes: list, code_type: str) -> str:
+        """Apply fixes to the original code"""
+        fixed_code = original_code
+        
+        if not fixes or not isinstance(fixes, list):
+            return fixed_code
+            
+        for fix in fixes:
+            if not isinstance(fix, dict):
+                continue
+                
+            before = fix.get("before", "")
+            after = fix.get("after", "")
+            fix_type = fix.get("type", "").lower()
+            
+            # Only apply fixes that match the code type
+            if not before or not after:
+                continue
+                
+            if code_type == "html" and (fix_type.startswith("html") or fix_type == "content_fix"):
+                # Apply HTML/content fixes
+                if before in fixed_code:
+                    fixed_code = fixed_code.replace(before, after)
+            elif code_type == "css" and fix_type.startswith("css"):
+                # Apply CSS fixes
+                if before in fixed_code:
+                    fixed_code = fixed_code.replace(before, after)
+            elif code_type == "js" and fix_type.startswith("js"):
+                # Apply JavaScript fixes
+                if before in fixed_code:
+                    fixed_code = fixed_code.replace(before, after)
+        
+        return fixed_code
+    
     def process_approval(state: AgentState) -> AgentState:
         # Extract issues and dashboard fields correctly from agent outputs
         layout_issues = state.get("layout_issues", {})
@@ -93,35 +128,22 @@ def create_bug_fixer_graph() -> Graph:
         diff_views = approval.get("diff_views") if isinstance(approval, dict) and "diff_views" in approval else []
         submission_id = approval.get("submission_id") if isinstance(approval, dict) else None
 
-        # Extract fixed code from optimizations or fixes if available
-        html_fixed = state["input"].get("html", "")
-        css_fixed = state["input"].get("css", "")
-        js_fixed = state["input"].get("javascript", "")
-        # Collect all after snippets for each type
-        html_fixes = []
-        css_fixes = []
-        js_fixes = []
-        if isinstance(fixes, list):
-            for fix in fixes:
-                fix_type = fix.get("type", "").lower()
-                before = fix.get("before", "")
-                after = fix.get("after", "")
-                if (fix_type.startswith("html") or fix_type == "content_fix") and before and after:
-                    html_fixes.append((before, after))
-                if fix_type.startswith("css") and before and after:
-                    css_fixes.append((before, after))
-                if fix_type.startswith("js") and before and after:
-                    js_fixes.append((before, after))
-        # Apply all fixes sequentially
-        for before, after in html_fixes:
-            if before in html_fixed:
-                html_fixed = html_fixed.replace(before, after)
-        for before, after in css_fixes:
-            if before in css_fixed:
-                css_fixed = css_fixed.replace(before, after)
-        for before, after in js_fixes:
-            if before in js_fixed:
-                js_fixed = js_fixed.replace(before, after)
+        # Get original code
+        original_html = state["input"].get("html", "")
+        original_css = state["input"].get("css", "")
+        original_js = state["input"].get("javascript", "")
+        
+        # Apply fixes to generate actual fixed code
+        html_fixed = apply_fixes_to_code(original_html, fixes if isinstance(fixes, list) else [], "html")
+        css_fixed = apply_fixes_to_code(original_css, fixes if isinstance(fixes, list) else [], "css")
+        js_fixed = apply_fixes_to_code(original_js, fixes if isinstance(fixes, list) else [], "js")
+        
+        # Also apply optimizations if available
+        if isinstance(optimizations, list):
+            html_fixed = apply_fixes_to_code(html_fixed, optimizations, "html")
+            css_fixed = apply_fixes_to_code(css_fixed, optimizations, "css")
+            js_fixed = apply_fixes_to_code(js_fixed, optimizations, "js")
+        
         # Compose a final output with all expected fields for frontend compatibility
         state["final_output"] = {
             "status": "pending",
@@ -131,11 +153,21 @@ def create_bug_fixer_graph() -> Graph:
             "issues": content_issues,
             "fixes": fixes,
             "optimizations": optimizations,
+            "html_original": original_html,
+            "css_original": original_css,
+            "js_original": original_js,
             "html_fixed": html_fixed,
             "css_fixed": css_fixed,
             "js_fixed": js_fixed,
+            "submission_id": submission_id
         }
         print("\n[Final Output]")
+        print(f"Original HTML length: {len(original_html)}")
+        print(f"Fixed HTML length: {len(html_fixed)}")
+        print(f"Original CSS length: {len(original_css)}")
+        print(f"Fixed CSS length: {len(css_fixed)}")
+        print(f"Original JS length: {len(original_js)}")
+        print(f"Fixed JS length: {len(js_fixed)}")
         print(state["final_output"])
         return state
 
