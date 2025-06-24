@@ -94,18 +94,34 @@ def create_bug_fixer_graph() -> Graph:
         submission_id = approval.get("submission_id") if isinstance(approval, dict) else None
 
         # Extract fixed code from optimizations or fixes if available
-        html_fixed = ""
-        css_fixed = ""
-        js_fixed = ""
-        # Try to extract from optimizations (if present)
-        if isinstance(optimizations, list):
-            for opt in optimizations:
-                if opt.get("type", "").lower().startswith("html"):
-                    html_fixed = opt.get("implementation", {}).get("after", "")
-                if opt.get("type", "").lower().startswith("css"):
-                    css_fixed = opt.get("implementation", {}).get("after", "")
-                if opt.get("type", "").lower().startswith("js"):
-                    js_fixed = opt.get("implementation", {}).get("after", "")
+        html_fixed = state["input"].get("html", "")
+        css_fixed = state["input"].get("css", "")
+        js_fixed = state["input"].get("javascript", "")
+        # Collect all after snippets for each type
+        html_fixes = []
+        css_fixes = []
+        js_fixes = []
+        if isinstance(fixes, list):
+            for fix in fixes:
+                fix_type = fix.get("type", "").lower()
+                before = fix.get("before", "")
+                after = fix.get("after", "")
+                if (fix_type.startswith("html") or fix_type == "content_fix") and before and after:
+                    html_fixes.append((before, after))
+                if fix_type.startswith("css") and before and after:
+                    css_fixes.append((before, after))
+                if fix_type.startswith("js") and before and after:
+                    js_fixes.append((before, after))
+        # Apply all fixes sequentially
+        for before, after in html_fixes:
+            if before in html_fixed:
+                html_fixed = html_fixed.replace(before, after)
+        for before, after in css_fixes:
+            if before in css_fixed:
+                css_fixed = css_fixed.replace(before, after)
+        for before, after in js_fixes:
+            if before in js_fixed:
+                js_fixed = js_fixed.replace(before, after)
         # Compose a final output with all expected fields for frontend compatibility
         state["final_output"] = {
             "status": "pending",
