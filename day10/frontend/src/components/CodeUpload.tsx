@@ -6,21 +6,10 @@ export default function CodeUpload({ onSubmit }: { onSubmit: (data: any) => void
   const [css, setCss] = useState('');
   const [js, setJs] = useState('');
 
-  const handleAnalyze = async (e: React.FormEvent) => {
+  const handleAnalyze = (e: React.FormEvent) => {
     e.preventDefault();
-    // Call FastAPI backend directly
-    const res = await fetch('http://127.0.0.1:8000/api/bug-fix', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input_data: { html, css, javascript: js } })
-    });
-    if (!res.ok) {
-      alert('Failed to analyze code.');
-      return;
-    }
-    const result = await res.json();
-    // Optionally, you can pass result to a parent handler if needed
-    if (typeof onSubmit === 'function') onSubmit(result);
+    // Only call the parent onSubmit with the code data, do not call the API here
+    if (typeof onSubmit === 'function') onSubmit({ html, css, javascript: js });
   };
 
   return (
