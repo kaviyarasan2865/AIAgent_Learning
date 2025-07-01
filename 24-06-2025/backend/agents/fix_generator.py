@@ -41,13 +41,8 @@ class FixGeneratorAgent:
 
     def _get_prompt(self) -> PromptTemplate:
         return PromptTemplate(
-            template="""You are a Fix Generator Agent specialized in creating solutions for web issues.
-Your goal is to generate fixes for:
-- Layout problems
-- Content issues
-- JavaScript errors
-- CSS conflicts
-- Responsive design problems
+            template="""You are a Fix Generator Agent specialized in creating solutions for web development issues.
+Your goal is to analyze issues and generate specific, actionable fixes.
 
 Input: {input}
 Available tools: {tools}
@@ -55,22 +50,33 @@ Tool names: {tool_names}
 
 {agent_scratchpad}
 
-Think through this step-by-step:
-1. Analyze the reported issues
-2. Generate appropriate fixes
-3. Ensure compatibility
-4. Provide before/after snippets
-5. Add implementation notes
+IMPORTANT: You must return your response in valid JSON format with the following structure:
 
-Response should be in JSON format with:
-- fixes: list of proposed changes
-- code_snippets: before/after code
-- compatibility_notes: any potential conflicts
-- implementation_steps: how to apply fixes
+{{
+  "fixes": [
+    {{
+      "type": "html_fix|css_fix|js_fix",
+      "before": "exact problematic code snippet",
+      "after": "exact corrected code snippet", 
+      "explanation": "brief explanation of the fix"
+    }}
+  ]
+}}
 
-IMPORTANT: Only use the available tools. Do NOT use 'manual fix', 'None', or any unsupported action. If a fix cannot be automated, return a message explaining why.
+Guidelines:
+1. Analyze the reported issues carefully
+2. Generate specific fixes for each issue type (HTML, CSS, JavaScript)
+3. Use exact code snippets in "before" and "after" fields
+4. Ensure the "before" code matches what's actually in the source code
+5. Make fixes that are practical and implementable
+6. Include explanations that are clear and concise
 
-Let's generate some solutions!""",
+Common fix types:
+- html_fix: For placeholder text, missing images, semantic issues
+- css_fix: For positioning, responsive design, layout problems  
+- js_fix: For missing elements, error handling, functionality issues
+
+Return ONLY the JSON response. Do not include any other text or explanations outside the JSON structure.""",
             input_variables=["input", "tools", "tool_names", "agent_scratchpad"]
         )
 
@@ -114,15 +120,15 @@ Let's generate some solutions!""",
                 fixes.append({
                     "type": "html_fix",
                     "before": "Lorem ipsum dolor sit amet",
-                    "after": "[Add relevant content here]",
-                    "explanation": "Remove lorem ipsum placeholder"
+                    "after": "Welcome to our website! This is where you can add your main content.",
+                    "explanation": "Replace placeholder text with meaningful content"
                 })
             elif issue.get("type") == "missing_image":
                 fixes.append({
                     "type": "html_fix",
                     "before": '<img src="#" alt="">',
-                    "after": '<img src="path/to/image.jpg" alt="Descriptive text">',
-                    "explanation": "Add proper image source and alt text"
+                    "after": '<img src="https://via.placeholder.com/300x200" alt="Sample image">',
+                    "explanation": "Add proper image source and descriptive alt text"
                 })
         return {"fixes": fixes}
 
@@ -156,101 +162,154 @@ Let's generate some solutions!""",
         return {"fixes": fixes}
 
     def run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate fixes for all issues"""
+        """Generate fixes for all issues using the LLM agent"""
         issues = input_data.get('issues', {})
         layout_issues = issues.get('layout', [])
         content_issues = issues.get('content', [])
         
+        # Create a comprehensive prompt for the agent to analyze and generate fixes
+        analysis_prompt = f"""
+Analyze the following web development issues and generate specific fixes:
+
+LAYOUT ISSUES:
+{layout_issues}
+
+CONTENT ISSUES:
+{content_issues}
+
+Please generate fixes for:
+1. HTML content issues (placeholder text, missing images, etc.)
+2. CSS layout issues (positioning, responsive design, etc.)
+3. JavaScript functionality issues (missing elements, error handling, etc.)
+
+For each fix, provide:
+- type: "html_fix", "css_fix", or "js_fix"
+- before: the problematic code snippet
+- after: the corrected code snippet
+- explanation: why this fix is needed
+
+Return the fixes in JSON format with a "fixes" array containing the fix objects.
+"""
+
+        try:
+            # Use the LLM agent to generate fixes
+            result = self.executor.run(input=analysis_prompt)
+            
+            # Parse the result
+            if isinstance(result, str):
+                # Try to extract JSON from the result
+                if "{" in result and "}" in result:
+                    start = result.find("{")
+                    end = result.rfind("}") + 1
+                    json_str = result[start:end]
+                    try:
+                        parsed_result = json.loads(json_str)
+                        if "fixes" in parsed_result and isinstance(parsed_result["fixes"], list):
+                            return {"fixes": parsed_result["fixes"]}
+                    except json.JSONDecodeError:
+                        pass
+                
+                # If JSON parsing failed, try to extract fixes from the text
+                fixes = self._extract_fixes_from_text(result)
+                if fixes:
+                    return {"fixes": fixes}
+            
+            # If agent approach failed, fall back to basic fixes
+            return self._generate_basic_fixes(issues)
+            
+        except Exception as e:
+            print(f"Agent-based fix generation failed: {e}")
+            # Fall back to basic fixes
+            return self._generate_basic_fixes(issues)
+
+    def _extract_fixes_from_text(self, text: str) -> List[Dict]:
+        """Extract fixes from agent response text when JSON parsing fails"""
+        fixes = []
+        
+        # Look for common patterns in the text
+        lines = text.split('\n')
+        current_fix = {}
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Look for fix type indicators
+            if "html_fix" in line.lower() or "html fix" in line.lower():
+                if current_fix:
+                    fixes.append(current_fix)
+                current_fix = {"type": "html_fix"}
+            elif "css_fix" in line.lower() or "css fix" in line.lower():
+                if current_fix:
+                    fixes.append(current_fix)
+                current_fix = {"type": "css_fix"}
+            elif "js_fix" in line.lower() or "javascript fix" in line.lower():
+                if current_fix:
+                    fixes.append(current_fix)
+                current_fix = {"type": "js_fix"}
+            
+            # Look for before/after patterns
+            elif "before:" in line.lower():
+                before_content = line.split("before:", 1)[1].strip()
+                if current_fix:
+                    current_fix["before"] = before_content
+            elif "after:" in line.lower():
+                after_content = line.split("after:", 1)[1].strip()
+                if current_fix:
+                    current_fix["after"] = after_content
+            elif "explanation:" in line.lower():
+                explanation = line.split("explanation:", 1)[1].strip()
+                if current_fix:
+                    current_fix["explanation"] = explanation
+        
+        # Add the last fix if it exists
+        if current_fix and len(current_fix) > 1:
+            fixes.append(current_fix)
+        
+        return fixes
+
+    def _generate_basic_fixes(self, issues: Dict) -> Dict[str, Any]:
+        """Generate basic fixes as fallback when agent fails"""
         all_fixes = []
         
-        # Generate specific fixes based on common issues
-        # Layout fixes
-        if layout_issues:
-            if isinstance(layout_issues, list):
-                for issue in layout_issues:
-                    if isinstance(issue, dict) and issue.get("type") == "positioning":
-                        all_fixes.append({
-                            "type": "css_fix",
-                            "before": "position: absolute;",
-                            "after": "position: relative;\nz-index: 1;",
-                            "explanation": "Changed to relative positioning to prevent overlap"
-                        })
-                    elif isinstance(issue, dict) and issue.get("type") == "responsive":
-                        all_fixes.append({
-                            "type": "css_fix",
-                            "before": "width: 300px;",
-                            "after": "width: 100%;\nmax-width: 300px;",
-                            "explanation": "Made width responsive with max-width constraint"
-                        })
-            elif isinstance(layout_issues, str) and "position" in layout_issues.lower():
-                all_fixes.append({
-                    "type": "css_fix",
-                    "before": "position: absolute;",
-                    "after": "position: relative;\nz-index: 1;",
-                    "explanation": "Changed to relative positioning to prevent overlap"
-                })
+        # Generate basic fixes based on common patterns
+        layout_issues = issues.get('layout', [])
+        content_issues = issues.get('content', [])
         
-        # Content fixes
-        if content_issues:
-            if isinstance(content_issues, list):
-                for issue in content_issues:
-                    if isinstance(issue, dict) and issue.get("type") == "placeholder":
-                        all_fixes.append({
-                            "type": "html_fix",
-                            "before": "Lorem ipsum dolor sit amet",
-                            "after": "[Add relevant content here]",
-                            "explanation": "Remove lorem ipsum placeholder"
-                        })
-                    elif isinstance(issue, dict) and issue.get("type") == "missing_image":
-                        all_fixes.append({
-                            "type": "html_fix",
-                            "before": '<img src="#" alt="">',
-                            "after": '<img src="path/to/image.jpg" alt="Descriptive text">',
-                            "explanation": "Add proper image source and alt text"
-                        })
-            elif isinstance(content_issues, str) and "lorem" in content_issues.lower():
-                all_fixes.append({
-                    "type": "html_fix",
-                    "before": "Lorem ipsum dolor sit amet",
-                    "after": "[Add relevant content here]",
-                    "explanation": "Remove lorem ipsum placeholder"
-                })
-        
-        # JavaScript fixes (common issues)
-        if any("javascript" in str(issue).lower() or "js" in str(issue).lower() for issue in [layout_issues, content_issues]):
+        # HTML fixes for common issues
+        if any("lorem" in str(issue).lower() for issue in [layout_issues, content_issues]):
             all_fixes.append({
-                "type": "js_fix",
-                "before": "document.getElementById('missing-id').style.display = 'none';",
-                "after": "var el = document.getElementById('missing-id');\nif (el) { el.style.display = 'none'; }",
-                "explanation": "Added check for missing element before accessing properties"
+                "type": "html_fix",
+                "before": "Lorem ipsum dolor sit amet",
+                "after": "Welcome to our website! This is where you can add your main content.",
+                "explanation": "Replace placeholder text with meaningful content"
             })
         
-        # If no specific fixes were generated, try the agent approach
-        if not all_fixes:
-            summary = f"Layout Issues: {layout_issues}\nContent Issues: {content_issues}"
-            result = self.executor.run(input=summary)
-            
-            # Parse the result if it's a string containing JSON
-            if isinstance(result, str):
-                try:
-                    # Try to extract JSON from the result
-                    if "{" in result and "}" in result:
-                        start = result.find("{")
-                        end = result.rfind("}") + 1
-                        json_str = result[start:end]
-                        parsed_result = json.loads(json_str)
-                        if "fixes" in parsed_result:
-                            all_fixes = parsed_result["fixes"]
-                except:
-                    pass
-            
-            # If still no fixes, create a generic one
-            if not all_fixes:
-                all_fixes = [{
-                    "type": "general_fix",
-                    "before": "/* Original code with issues */",
-                    "after": "/* Fixed code */",
-                    "explanation": "General fix applied based on detected issues"
-                }]
+        if any("img" in str(issue).lower() and "src" in str(issue).lower() for issue in [layout_issues, content_issues]):
+            all_fixes.append({
+                "type": "html_fix",
+                "before": '<img src="#" alt="">',
+                "after": '<img src="https://via.placeholder.com/300x200" alt="Sample image">',
+                "explanation": "Add proper image source and descriptive alt text"
+            })
+        
+        # CSS fixes for common issues
+        if any("position" in str(issue).lower() for issue in [layout_issues, content_issues]):
+            all_fixes.append({
+                "type": "css_fix",
+                "before": "position: absolute;",
+                "after": "position: relative;\nz-index: 1;",
+                "explanation": "Changed to relative positioning to prevent overlap"
+            })
+        
+        # JavaScript fixes for common issues
+        if any("javascript" in str(issue).lower() or "missing" in str(issue).lower() for issue in [layout_issues, content_issues]):
+            all_fixes.append({
+                "type": "js_fix",
+                "before": "const element = document.getElementById('missing-id');\nelement.style.display = 'none';",
+                "after": "const element = document.getElementById('missing-id');\nif (element) {\n    element.style.display = 'none';\n}",
+                "explanation": "Added null check for missing element before accessing properties"
+            })
         
         return {"fixes": all_fixes}
