@@ -96,14 +96,19 @@ export default function Home() {
   const handleApprove = async () => {
     setUserDecision('approved');
     setCurrentStep('complete');
-    
-    // Here you would typically send approval to backend
-    if (analysisResult?.submission_id) {
+
+    if (analysisResult) {
       try {
-        await fetch(`http://127.0.0.1:8000/api/approval/${analysisResult.submission_id}`, {
+        await fetch(`/api/approval`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ approved: true })
+          body: JSON.stringify({
+            codeSubmissionId: analysisResult.submission_id,
+            approved: true,
+            html_fixed: analysisResult.html_fixed,
+            css_fixed: analysisResult.css_fixed,
+            js_fixed: analysisResult.js_fixed
+          })
         });
       } catch (error) {
         console.error('Failed to send approval:', error);
