@@ -7,6 +7,12 @@ from langchain.schema.output_parser import StrOutputParser
 from langchain.schema.runnable import RunnablePassthrough
 import json
 import re
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Configure Streamlit
 st.set_page_config(page_title="Study Assistant", page_icon="📚", layout="wide")
@@ -16,7 +22,7 @@ st.caption("Upload a PDF to get a summary and interactive quiz")
 # Initialize Gemini model
 model = ChatGoogleGenerativeAI(
     model="gemini-1.5-flash",
-    api_key="AIzaSyDG-0xIaprzdT70VTf-LnMt62_s-F8SJqA",
+    api_key=GEMINI_API_KEY,
     temperature=0.3,
     max_output_tokens=2048
 )
