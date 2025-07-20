@@ -9,7 +9,7 @@ This project is a fully agentic research assistant built with Streamlit, LangCha
 - **Multi-Agent Pipeline:**  
   Routes your query to the best agent: Web Search, Retrieval-Augmented Generation (RAG), or LLM.
 - **Document Support:**  
-  Upload PDFs, DOCX, or TXT files to the `my_docs` folder for custom knowledge retrieval.
+  Upload PDFs, DOCX, or TXT files to the `rag` folder for custom knowledge retrieval.
 - **Web Search Integration:**  
   Uses DuckDuckGo for real-time web answers.
 - **Gemini LLM:**  
@@ -28,7 +28,7 @@ This project is a fully agentic research assistant built with Streamlit, LangCha
    - Initializes Gemini LLM and embedding model.
 
 2. **File Parsing**
-   - Reads all `.pdf`, `.docx`, and `.txt` files in the `my_docs` folder.
+   - Reads all `.pdf`, `.docx`, and `.txt` files in the `rag` folder.
    - Splits documents into chunks and creates a FAISS vector store for retrieval.
 
 3. **Agents**
@@ -73,7 +73,7 @@ This project is a fully agentic research assistant built with Streamlit, LangCha
    - Get your key from [Google AI Studio](https://aistudio.google.com/app/apikey)
 
 4. **(Optional) Add your documents**
-   - Place `.pdf`, `.docx`, or `.txt` files in a folder named `my_docs` in the project directory.
+   - Place `.pdf`, `.docx`, or `.txt` files in a folder named `rag` in the project directory.
 
 ---
 
