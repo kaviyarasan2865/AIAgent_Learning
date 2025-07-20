@@ -1,0 +1,5 @@
+autogen
+streamlit
+python-dotenv
+google-genai
+vertexai
