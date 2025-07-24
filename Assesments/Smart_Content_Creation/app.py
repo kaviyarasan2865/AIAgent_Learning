@@ -7,165 +7,166 @@ import copy
 import os
 from dotenv import load_dotenv 
 
-# Configuration
+# Environment Setup
 load_dotenv()  
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GOOGLE_AI_KEY = os.getenv("GEMINI_API_KEY")
 
-genai.configure(api_key=GEMINI_API_KEY)
+genai.configure(api_key=GOOGLE_AI_KEY)
 
-# System messages
-CREATOR_SYSTEM_MESSAGE = """
-You are a Content Creator Agent specializing in Generative AI. Your role is to:
-1. Draft clear, concise, and technically accurate content
-2. Revise content based on constructive feedback
-3. Structure output in markdown format
-4. Focus exclusively on content creation (no commentary)
+# Agent Behavioral Instructions
+WRITER_PERSONA = """
+You are an Expert Content Architect specializing in Generative AI technologies. Your expertise includes:
+1. Crafting comprehensive, well-structured content with technical precision
+2. Adapting and enhancing content based on expert feedback
+3. Delivering polished markdown-formatted documentation
+4. Maintaining focus on content excellence without meta-commentary
 """
 
-CRITIC_SYSTEM_MESSAGE = """
-You are a Content Critic Agent evaluating Generative AI content. Your role is to:
-1. Analyze technical accuracy and language clarity
-2. Provide specific, constructive feedback
-3. Identify both strengths and areas for improvement
-4. Maintain professional, objective tone
+REVIEWER_PERSONA = """
+You are a Technical Content Evaluator with deep expertise in Generative AI. Your responsibilities include:
+1. Conducting thorough analysis of content quality and technical correctness
+2. Delivering actionable, specific improvement recommendations
+3. Recognizing content strengths while identifying enhancement opportunities
+4. Providing balanced, professional assessment with constructive guidance
 """
 
-# Custom wrapper for deepcopy compatibility
-class GeminiAgent:
-    def __init__(self, model, system_message):
-        self.model = model
-        self.system_message = system_message
+# Advanced AI Model Wrapper
+class EnhancedGeminiInterface:
+    def __init__(self, ai_model, behavioral_instructions):
+        self.ai_model = ai_model
+        self.behavioral_instructions = behavioral_instructions
     
-    def generate(self, prompt):
-        full_prompt = self.system_message + "\n\n" + prompt
+    def process_request(self, user_input):
+        complete_instruction = self.behavioral_instructions + "\n\n" + user_input
         try:
-            response = self.model.invoke(full_prompt)
-            return response.content
-        except Exception as e:
-            return f"Error: {str(e)}"
+            ai_output = self.ai_model.invoke(complete_instruction)
+            return ai_output.content
+        except Exception as error:
+            return f"Processing Error: {str(error)}"
     
-    def __deepcopy__(self, memo):
-        # Create a new instance with same configuration
-        return GeminiAgent(
-            model=ChatGoogleGenerativeAI(model=self.model.model, google_api_key=api_key),
-            system_message=self.system_message
+    def __deepcopy__(self, memory_map):
+        # Generate new instance preserving original configuration
+        return EnhancedGeminiInterface(
+            ai_model=ChatGoogleGenerativeAI(model=self.ai_model.model, google_api_key=GOOGLE_AI_KEY),
+            behavioral_instructions=self.behavioral_instructions
         )
 
-# Initialize Gemini models through LangChain
-creator_model = GeminiAgent(
-    model=ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=api_key),
-    system_message=CREATOR_SYSTEM_MESSAGE
+# Initialize Specialized AI Interfaces
+content_architect = EnhancedGeminiInterface(
+    ai_model=ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=GOOGLE_AI_KEY),
+    behavioral_instructions=WRITER_PERSONA
 )
 
-critic_model = GeminiAgent(
-    model=ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=api_key),
-    system_message=CRITIC_SYSTEM_MESSAGE
+quality_assessor = EnhancedGeminiInterface(
+    ai_model=ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=GOOGLE_AI_KEY),
+    behavioral_instructions=REVIEWER_PERSONA
 )
 
-# Streamlit UI
-st.title("🤖 Agentic AI Content Refinement")
-st.caption("Simulated conversation between Content Creator and Content Critic agents")
+# Main Application Interface
+st.title("🎭 Collaborative AI Content Workshop")
+st.caption("Watch Expert Content Architect and Quality Assessor agents collaborate in real-time")
 
-# Controls
-topic = st.text_input("Discussion Topic", "Agentic AI")
-turns = st.slider("Conversation Turns", 3, 5, 3)
-generate_btn = st.button("Start Simulation")
+# Interactive Configuration Panel
+subject_matter = st.text_input("Research Focus Area", "Agentic AI")
+interaction_cycles = st.slider("Collaboration Rounds", 3, 5, 3)
+initiate_workshop = st.button("Launch Workshop")
 
-if generate_btn:
-    # Create AutoGen agents with proper configuration
-    creator = AssistantAgent(
-        name="Creator",
-        system_message=CREATOR_SYSTEM_MESSAGE,
+if initiate_workshop:
+    # Configure AutoGen Content Architect Agent
+    architect_agent = AssistantAgent(
+        name="ContentArchitect",
+        system_message=WRITER_PERSONA,
         llm_config={
             "config_list": [
                 {
                     "model": "gemini-1.5-flash",
-                    "api_key": api_key,
+                    "api_key": GOOGLE_AI_KEY,
                     "base_url": "https://generativelanguage.googleapis.com/v1beta/models/"
                 }
             ],
             "timeout": 120
         },
         human_input_mode="NEVER",
-        is_termination_msg=lambda x: x.get("content", "").find("TERMINATE") >= 0,
+        is_termination_msg=lambda msg: msg.get("content", "").find("TERMINATE") >= 0,
     )
     
-    critic = AssistantAgent(
-        name="Critic",
-        system_message=CRITIC_SYSTEM_MESSAGE,
+    # Configure AutoGen Quality Assessor Agent
+    assessor_agent = AssistantAgent(
+        name="QualityAssessor",
+        system_message=REVIEWER_PERSONA,
         llm_config={
             "config_list": [
                 {
                     "model": "gemini-1.5-flash",
-                    "api_key": api_key,
+                    "api_key": GOOGLE_AI_KEY,
                     "base_url": "https://generativelanguage.googleapis.com/v1beta/models/"
                 }
             ],
             "timeout": 120
         },
         human_input_mode="NEVER",
-        is_termination_msg=lambda x: x.get("content", "").find("TERMINATE") >= 0,
+        is_termination_msg=lambda msg: msg.get("content", "").find("TERMINATE") >= 0,
     )
     
-    # User proxy agent with Docker disabled
-    user_proxy = UserProxyAgent(
-        name="User_Proxy",
+    # Configure Workshop Coordinator
+    workshop_coordinator = UserProxyAgent(
+        name="WorkshopCoordinator",
         human_input_mode="NEVER",
         max_consecutive_auto_reply=0,
         code_execution_config=False,
     )
     
-    # Initialize conversation state
-    conversation_history = []
-    creator_output = ""
-    critic_feedback = ""
+    # Workshop Session Variables
+    workshop_transcript = []
+    latest_content = ""
+    assessment_feedback = ""
     
-    # Start conversation
-    for turn in range(1, turns + 1):
-        with st.status(f"🚀 Turn {turn} in progress...", expanded=True):
-            # Content Creator Turn (odd turns)
-            if turn % 2 == 1:
-                st.subheader(f"Turn {turn}: Content Creator")
-                if turn == 1:
-                    prompt = f"Draft comprehensive content about {topic} in markdown format covering:\n- Key concepts\n- Technical foundations\n- Real-world applications\n- Future implications"
+    # Execute Collaborative Workshop
+    for cycle in range(1, interaction_cycles + 1):
+        with st.status(f"⚡ Cycle {cycle} underway...", expanded=True):
+            # Content Creation Phase (odd cycles)
+            if cycle % 2 == 1:
+                st.subheader(f"Cycle {cycle}: Content Architect Phase")
+                if cycle == 1:
+                    creation_directive = f"Develop authoritative content exploring {subject_matter} using markdown structure. Include:\n- Fundamental principles and definitions\n- Technical architecture and components\n- Practical implementation scenarios\n- Emerging trends and future directions"
                 else:
-                    prompt = f"Revise this content based on the critic's feedback:\n\n{critic_feedback}\n\nCurrent content:\n{creator_output}\n\nProvide improved markdown content:"
+                    creation_directive = f"Enhance the existing content incorporating the assessor's recommendations:\n\nAssessment Feedback:\n{assessment_feedback}\n\nCurrent Material:\n{latest_content}\n\nDeliver refined markdown content:"
                 
-                st.markdown("**Prompt:**")
-                st.write(prompt)
+                st.markdown("**Development Brief:**")
+                st.write(creation_directive)
                 
-                # Generate content through creator model
-                creator_output = creator_model.generate(prompt)
+                # Execute content creation
+                latest_content = content_architect.process_request(creation_directive)
                 
-                st.markdown("**Generated Content:**")
-                st.markdown(creator_output)
-                conversation_history.append(("Creator", creator_output))
+                st.markdown("**Crafted Content:**")
+                st.markdown(latest_content)
+                workshop_transcript.append(("ContentArchitect", latest_content))
             
-            # Content Critic Turn (even turns)
+            # Quality Assessment Phase (even cycles)
             else:
-                st.subheader(f"Turn {turn}: Content Critic")
-                prompt = f"Evaluate this content on:\n1. Technical accuracy\n2. Clarity of explanations\n3. Depth of coverage\n4. Improvement suggestions\n\nContent:\n{creator_output}"
+                st.subheader(f"Cycle {cycle}: Quality Assessment Phase")
+                assessment_directive = f"Conduct comprehensive evaluation of this content across multiple dimensions:\n1. Technical precision and accuracy\n2. Communication effectiveness and clarity\n3. Content completeness and depth\n4. Strategic improvement recommendations\n\nContent Under Review:\n{latest_content}"
                 
-                st.markdown("**Prompt:**")
-                st.write(prompt)
+                st.markdown("**Assessment Brief:**")
+                st.write(assessment_directive)
                 
-                # Generate feedback through critic model
-                critic_feedback = critic_model.generate(prompt)
+                # Execute quality assessment
+                assessment_feedback = quality_assessor.process_request(assessment_directive)
                 
-                st.markdown("**Critical Feedback:**")
-                st.write(critic_feedback)
-                conversation_history.append(("Critic", critic_feedback))
+                st.markdown("**Expert Assessment:**")
+                st.write(assessment_feedback)
+                workshop_transcript.append(("QualityAssessor", assessment_feedback))
             
-            time.sleep(1)  # Avoid rate limiting
+            time.sleep(1)  # Rate limiting protection
     
-    # Display final output
+    # Workshop Deliverable
     st.divider()
-    st.subheader("✅ Final Content")
-    st.markdown(creator_output)
+    st.subheader("🏆 Workshop Deliverable")
+    st.markdown(latest_content)
     
-    # Show conversation history
+    # Complete Workshop Documentation
     st.divider()
-    st.subheader("🗨️ Full Conversation Trace")
-    for i, (role, content) in enumerate(conversation_history, 1):
-        with st.expander(f"{role} - Turn {i}"):
-            st.write(content)
+    st.subheader("📋 Workshop Documentation")
+    for session_num, (participant_role, session_output) in enumerate(workshop_transcript, 1):
+        with st.expander(f"{participant_role} - Session {session_num}"):
+            st.write(session_output)
