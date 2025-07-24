@@ -7,133 +7,126 @@ import json
 import google.generativeai as genai
 from autogen.agentchat import UserProxyAgent, AssistantAgent, GroupChat, GroupChatManager
 
-# Load API Key
+# --- ENVIRONMENT & MODEL SETUP ---
 load_dotenv()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("models/gemini-1.5-flash")
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+genai.configure(api_key=GEMINI_KEY)
+vision_model = genai.GenerativeModel("models/gemini-1.5-flash")
 
-# --- UI CONFIG ---
-st.set_page_config(page_title="🧾 Bill Management Agent", layout="wide")
+# --- STREAMLIT PAGE CONFIG ---
+st.set_page_config(page_title="🧾 Smart Bill Analyzer", layout="wide")
 st.markdown("""
     <style>
-    .big-font { font-size: 22px !important; font-weight: 600; }
-    .agent-box { border-radius: 15px; background-color: #f1f1f1; color: black; padding: 15px; margin: 10px 0; }
-    .user { background-color: #e0f7fa; color: black; padding: 12px; border-radius: 10px; margin-bottom: 10px; }
-    .agent { background-color: #f3e5f5; color: black; padding: 12px; border-radius: 10px; margin-bottom: 10px; }
+    .header { font-size: 24px; font-weight: bold; }
+    .bubble { border-radius: 12px; background: #f9fbe7; padding: 14px; margin: 8px 0; }
+    .user-msg { background: #e3f2fd; }
+    .ai-msg { background: #fce4ec; }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("💼 AI Bill Management Agent")
-st.markdown("Upload a bill and let AI categorize and analyze your expenses.")
+st.title("🧮 Smart Bill Analyzer")
+st.markdown("Upload a bill image and let AI break down your spending by category.")
 
-# --- Upload File ---
-uploaded_file = st.file_uploader("📤 Upload your bill", type=["jpg", "jpeg", "png"])
+# --- FILE UPLOAD ---
+bill_image = st.file_uploader("Upload your bill image (jpg, png)", type=["jpg", "jpeg", "png"])
 
-chat_log = []
+dialogue = []
 
-# --- Gemini Vision to extract expense categories ---
-def process_bill_with_gemini(image_file):
-    with tempfile.NamedTemporaryFile(delete=False) as tmp:
-        tmp.write(image_file.read())
-        tmp_path = tmp.name
-
-    image = Image.open(tmp_path)
-
-    response = model.generate_content([
-        "Extract all expenses from this bill image. Group them into categories: Groceries, Dining, Utilities, Shopping, Entertainment, Others. Return as JSON format like {category: [{item, cost}]}.",
-        image
-    ])
-
-    try:
-        text = response.text.strip()
-        json_start = text.find("{")
-        json_end = text.rfind("}") + 1
-        data = json.loads(text[json_start:json_end])
-        return data, response.text
-    except Exception as e:
-        return None, response.text
-
-# --- Gemini Summary ---
-def summarize_expenses_with_gemini(expenses):
+# --- IMAGE TO EXPENSES ---
+def extract_expenses_from_image(img_file):
+    with tempfile.NamedTemporaryFile(delete=False) as temp:
+        temp.write(img_file.read())
+        temp_path = temp.name
+    img = Image.open(temp_path)
     prompt = (
-        f"Given the following categorized expenses: {expenses}, "
-        "summarize the total expenditure, show each category total, and mention which category has the highest cost and why it could be unusual."
+        "Scan this bill image and extract all expenses. "
+        "Organize them into: Groceries, Food, Utilities, Shopping, Entertainment, Miscellaneous. "
+        "Return a JSON object: {category: [{item, cost}]}. Only output JSON."
     )
-    response = model.generate_content(prompt)
-    return response.text.strip()
+    result = vision_model.generate_content([prompt, img])
+    try:
+        raw = result.text.strip()
+        start, end = raw.find("{"), raw.rfind("}") + 1
+        parsed = json.loads(raw[start:end])
+        return parsed, raw
+    except Exception:
+        return None, raw
 
-# --- AutoGen Agents (no Docker, Gemini only) ---
-user_proxy = UserProxyAgent(
-    name="UserProxy",
+# --- EXPENSE SUMMARY ---
+def expense_overview(expense_dict):
+    prompt = (
+        f"Given these categorized expenses: {expense_dict}, "
+        "calculate the total, show each category's sum, and highlight the largest category with a possible reason."
+    )
+    result = vision_model.generate_content(prompt)
+    return result.text.strip()
+
+# --- AGENT DEFINITIONS ---
+customer_agent = UserProxyAgent(
+    name="Customer",
     human_input_mode="NEVER",
     code_execution_config={"use_docker": False},
     llm_config=False
 )
 
-bill_processing_agent = AssistantAgent(
-    name="BillProcessingAgent",
+categorizer_agent = AssistantAgent(
+    name="ExpenseCategorizer",
     llm_config=False,
-    system_message="You categorize expenses from a bill into standard categories."
+    system_message="You extract and organize expenses from bills into categories."
 )
 
-summary_agent = AssistantAgent(
-    name="ExpenseSummarizationAgent",
+insight_agent = AssistantAgent(
+    name="InsightGenerator",
     llm_config=False,
-    system_message="You analyze categorized expenses and summarize trends."
+    system_message="You analyze categorized expenses and generate summaries."
 )
 
-group_chat = GroupChat(agents=[user_proxy, bill_processing_agent, summary_agent])
-manager = GroupChatManager(groupchat=group_chat)
+chat_group = GroupChat(agents=[customer_agent, categorizer_agent, insight_agent])
+chat_manager = GroupChatManager(groupchat=chat_group)
 
-# --- Main Execution Flow ---
-if uploaded_file:
-    st.success("✅ File uploaded. Processing...")
+# --- MAIN LOGIC ---
+if bill_image:
+    st.success("Bill received. Analyzing...")
 
-    with st.spinner("🔍 Extracting expenses..."):
-        categorized_data, raw_response = process_bill_with_gemini(uploaded_file)
+    with st.spinner("Extracting details from your bill..."):
+        expenses, ai_raw = extract_expenses_from_image(bill_image)
 
-    if not categorized_data:
-        st.error("❌ Failed to extract expenses.")
-        st.text(raw_response)
+    if not expenses:
+        st.error("Could not parse expenses from the image.")
+        st.text(ai_raw)
     else:
-        # 1. User → Group Manager
-        user_proxy.send("Bill uploaded", manager)
-        chat_log.append(("UserProxy → chat_manager", "Bill uploaded"))
+        # Simulate agent workflow with new logic
+        customer_agent.send("Bill image uploaded for analysis.", chat_manager)
+        dialogue.append(("Customer → chat_manager", "Bill image uploaded for analysis."))
 
-        # 2. User → BillProcessingAgent
-        user_proxy.send(f"Categorized expenses: {categorized_data}", bill_processing_agent)
-        chat_log.append(("UserProxy → BillProcessingAgent", json.dumps(categorized_data, indent=2)))
+        customer_agent.send(f"Expenses extracted: {expenses}", categorizer_agent)
+        dialogue.append(("Customer → ExpenseCategorizer", json.dumps(expenses, indent=2)))
 
-        # 3. Simulate BillProcessingAgent response
-        bp_response = "Categorization complete. Expenses sorted into available categories."
-        chat_log.append(("BillProcessingAgent", bp_response))
+        categorizer_reply = "Expenses have been sorted into their respective categories."
+        dialogue.append(("ExpenseCategorizer", categorizer_reply))
 
-        # 4. User → ExpenseSummarizationAgent
-        user_proxy.send("Summarize this data", summary_agent)
-        chat_log.append(("UserProxy → ExpenseSummarizationAgent", "Summarize this data"))
+        customer_agent.send("Please provide a summary of these expenses.", insight_agent)
+        dialogue.append(("Customer → InsightGenerator", "Please provide a summary of these expenses."))
 
-        # 5. Generate and simulate response
-        with st.spinner("📊 Generating spending summary..."):
-            summary = summarize_expenses_with_gemini(categorized_data)
+        with st.spinner("Summarizing your spending..."):
+            summary_text = expense_overview(expenses)
 
-        chat_log.append(("ExpenseSummarizationAgent", summary))
+        dialogue.append(("InsightGenerator", summary_text))
 
-        # --- Display Categorized Expenses ---
-        st.markdown("## 📂 Categorized Expenses")
-        for category, items in categorized_data.items():
+        # --- DISPLAY RESULTS ---
+        st.markdown("## 🗂️ Expense Breakdown")
+        for cat, items in expenses.items():
             if items:
-                st.markdown(f"### 🗂️ {category}")
-                for i in items:
-                    st.markdown(f"- **{i['item']}**: ₹{i['cost']}")
+                st.markdown(f"### {cat}")
+                for entry in items:
+                    st.markdown(f"- **{entry['item']}**: ₹{entry['cost']}")
 
         st.markdown("---")
-        st.markdown("## 📋 Spending Summary")
-        st.markdown(f"<div class='agent-box'>{summary}</div>", unsafe_allow_html=True)
+        st.markdown("## 📊 Expense Summary")
+        st.markdown(f"<div class='bubble ai-msg'>{summary_text}</div>", unsafe_allow_html=True)
 
-        # --- Agent Chat Logs ---
         st.markdown("---")
-        st.markdown("## 💬 Agent Chat Logs")
-        for sender, message in chat_log:
-            style = "user" if "UserProxy" in sender else "agent"
-            st.markdown(f"<div class='{style}'><strong>{sender}</strong><br>{message}</div>", unsafe_allow_html=True)
+        st.markdown("## 💬 Agent Dialogue")
+        for sender, msg in dialogue:
+            style = "user-msg" if "Customer" in sender else "ai-msg"
+            st.markdown(f"<div class='bubble {style}'><strong>{sender}</strong>: {msg}</div>", unsafe_allow_html=True)
