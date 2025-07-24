@@ -1,110 +1,102 @@
 import streamlit as st
 from crewai import Agent, Task, Crew, Process, LLM
-# from langchain_community.llms import Groq
 from langchain_google_genai import ChatGoogleGenerativeAI
 import os
 import ast
 from dotenv import load_dotenv
 
 load_dotenv()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
-# ===== 100% ONNX-FREE SOLUTION =====
-# No chromadb, no CodeInterpreterTool, no ONNX runtime
-
-
-# Custom Python Analyzer (No ONNX)
-def analyze_python_code(code: str) -> str:
-    """Static analysis without executing code."""
+# --- Pure Python Static Inspector ---
+def static_code_inspector(source: str) -> str:
+    """Inspects Python code for common static issues."""
     try:
-        # 1. Check syntax via AST
-        tree = ast.parse(code)
-        
-        # 2. Basic checks
-        issues = []
-        
-        # Check for print statements (not recommended in production)
-        if any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'print' 
-               for node in ast.walk(tree)):
-            issues.append("⚠️ Found `print()` - Use logging in production.")
+        parsed = ast.parse(source)
+        findings = []
 
-        # Check for broad exceptions
-        for node in ast.walk(tree):
+        # Discourage print usage
+        for node in ast.walk(parsed):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "print":
+                findings.append("⚠️ Detected `print()` usage. Consider using logging.")
+
+        # Warn on generic except
+        for node in ast.walk(parsed):
             if isinstance(node, ast.ExceptHandler) and node.type is None:
-                issues.append("⚠️ Found bare `except:` - Specify exception types.")
+                findings.append("⚠️ Found a bare `except:`. Specify the exception type.")
 
-        # 3. Return results
-        if issues:
-            return "Found issues:\n" + "\n".join(issues)
-        return "✅ No syntax errors found. Code looks good!"
-    
-    except SyntaxError as e:
-        return f"❌ Syntax Error: {e.msg} (Line {e.lineno})"
+        # Add more checks as needed...
 
-# Initialize LLM (Groq or Gemini)
-llm = LLM(
-    api_key=GEMINI_API_KEY,
-    model="gemini/gemini-2.5-flash"  # Must include provider prefix
+        if findings:
+            return "Static Inspector Report:\n" + "\n".join(findings)
+        return "✅ Inspector: No static issues detected."
+    except SyntaxError as err:
+        return f"❌ Inspector: Syntax error at line {err.lineno}: {err.msg}"
+
+# --- LLM Setup ---
+llm_engine = LLM(
+    api_key=GEMINI_KEY,
+    model="gemini/gemini-2.5-flash"
 )
-# ===== Agents =====
-code_analyzer = Agent(
-    role="Python Static Analyzer",
-    goal="Find issues in Python code WITHOUT executing it",
-    backstory="Expert in static code analysis using AST parsing.",
-    llm=llm,
+
+# --- Agents ---
+inspector_bot = Agent(
+    role="Static Inspector",
+    goal="Spot static code issues without running the code",
+    backstory="A vigilant code reviewer with a keen eye for static bugs.",
+    llm=llm_engine,
     verbose=True
 )
 
-code_corrector = Agent(
-    role="Python Code Fixer",
-    goal="Fix issues while keeping original functionality",
-    backstory="Specializes in clean, PEP 8 compliant fixes.",
-    llm=llm,
+refactor_bot = Agent(
+    role="Code Refactorer",
+    goal="Revise code to resolve static issues, preserving intent",
+    backstory="A Python stylist who crafts clean, robust code.",
+    llm=llm_engine,
     verbose=True
 )
 
-manager = Agent(
-    role="Code Review Manager",
-    goal="Ensure smooth analysis & correction",
-    backstory="Coordinates the review process.",
-    llm=llm,
+overseer_bot = Agent(
+    role="Review Overseer",
+    goal="Oversee the inspection and refactoring process",
+    backstory="Ensures all code reviews and fixes are coordinated smoothly.",
+    llm=llm_engine,
     verbose=True
 )
 
-# ===== Streamlit UI =====
-st.title("🔍 Python Code Reviewer (No ONNX)")
-code_input = st.text_area("Paste Python code:", height=300)
+# --- Streamlit UI ---
+st.title("🛠️ Python Static Inspector & Refactorer")
+user_code = st.text_area("Paste your Python code here:", height=300)
 
-if st.button("Analyze & Fix"):
-    if not code_input.strip():
-        st.warning("Please enter Python code.")
+if st.button("Run Inspection & Refactor"):
+    if not user_code.strip():
+        st.info("Please provide some Python code to analyze.")
     else:
-        with st.spinner("Analyzing..."):
-            # Task 1: Static Analysis
-            analysis_task = Task(
-                description=f"Analyze this code:\n```python\n{code_input}\n```",
-                agent=code_analyzer,
-                expected_output="List of static analysis issues."
+        with st.spinner("Running static inspection..."):
+            # Task 1: Inspection
+            inspect_task = Task(
+                description=f"Perform a static review of the following code. List any issues or anti-patterns you find:\n\n```python\n{user_code}\n```",
+                agent=inspector_bot,
+                expected_output="A concise list of static code issues."
             )
 
-            # Task 2: Fix Code
-            correction_task = Task(
-                description="Fix all issues found.",
-                agent=code_corrector,
-                expected_output="Corrected Python code with explanations.",
-                context=[analysis_task]
+            # Task 2: Refactoring
+            refactor_task = Task(
+                description="Revise the code to address all issues found in the inspection. Maintain the original logic and add brief comments explaining each fix.",
+                agent=refactor_bot,
+                expected_output="A corrected version of the code with inline explanations.",
+                context=[inspect_task]
             )
 
-            # Run CrewAI
-            crew = Crew(
-                agents=[code_analyzer, code_corrector, manager],
-                tasks=[analysis_task, correction_task],
+            # CrewAI Orchestration
+            review_crew = Crew(
+                agents=[inspector_bot, refactor_bot, overseer_bot],
+                tasks=[inspect_task, refactor_task],
                 verbose=True,
                 process=Process.sequential
             )
-            
-            result = crew.kickoff()
-            
-            # Display Results
-            st.subheader("🔧 Fixed Code")
-            st.code(result, language="python")
+
+            outcome = review_crew.kickoff()
+
+            st.subheader("🧹 Refactored Code")
+            st.code(outcome, language="python")
