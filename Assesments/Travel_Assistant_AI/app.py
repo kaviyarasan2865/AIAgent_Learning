@@ -8,250 +8,250 @@ from langchain_core.tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv 
 
-# Configuration
-load_dotenv()  # <-- Load environment variables from .env
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# Environment setup and configuration
+load_dotenv()
+WEATHER_SERVICE_KEY = os.getenv("WEATHER_API_KEY")
+GEMINI_SERVICE_KEY = os.getenv("GEMINI_API_KEY")
 
-# Initialize LLM - Using Gemini Pro
-llm = ChatGoogleGenerativeAI(
+# Initialize the AI model with Gemini configuration
+travel_ai_model = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     temperature=0.7,
-    google_api_key=GEMINI_API_KEY
+    google_api_key=GEMINI_SERVICE_KEY
 )
 
-# ----------------------
-# Enhanced Custom Tools
-# ----------------------
+@tool
+def fetch_weather_conditions(destination: str) -> str:
+    """Retrieve real-time weather conditions and forecast for any destination."""
+    try:
+        # Primary weather service - WeatherAPI
+        primary_endpoint = f"http://api.weatherapi.com/v1/current.json?key={WEATHER_SERVICE_KEY}&q={destination}&aqi=no"
+        weather_response = requests.get(primary_endpoint)
+        weather_data = weather_response.json()
+        
+        if "error" in weather_data:
+            # Backup weather service - OpenWeatherMap
+            backup_endpoint = f"http://api.openweathermap.org/data/2.5/weather?q={destination}&appid=9b929a9d9c3f5a5e610cbf9163121d1e&units=metric"
+            backup_response = requests.get(backup_endpoint)
+            backup_data = backup_response.json()
+            
+            if backup_data.get("cod") != 200:
+                return f"Weather service unavailable: {weather_data.get('error', {}).get('message', 'Unable to fetch weather information')}"
+            
+            return (f"Current conditions in {destination}: "
+                    f"Temperature {backup_data['main']['temp']}°C, "
+                    f"conditions: {backup_data['weather'][0]['description']}. "
+                    f"Real feel: {backup_data['main']['feels_like']}°C. "
+                    f"Humidity levels: {backup_data['main']['humidity']}%, "
+                    f"Wind speed: {backup_data['wind']['speed']} m/s")
+        
+        return (f"Live weather for {destination}: "
+                f"Currently {weather_data['current']['temp_c']}°C, "
+                f"sky conditions: {weather_data['current']['condition']['text']}. "
+                f"Feels like temperature: {weather_data['current']['feelslike_c']}°C. "
+                f"Atmospheric humidity: {weather_data['current']['humidity']}%, "
+                f"Wind velocity: {weather_data['current']['wind_kph']} km/h")
+    except Exception as error:
+        return f"Weather information currently unavailable: {str(error)}"
 
 @tool
-def get_current_weather(location: str) -> str:
-    """Get current weather information for a given location."""
+def discover_local_highlights(destination: str) -> str:
+    """Discover and curate the most compelling attractions and landmarks for any destination."""
     try:
-        # Use WeatherAPI with proper error handling
-        url = f"http://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={location}&aqi=no"
-        response = requests.get(url)
-        data = response.json()
+        # Enhanced search with DuckDuckGo
+        location_search = DuckDuckGoSearchAPIWrapper()
+        search_terms = f"must-visit attractions landmarks {destination} tourist guide recommendations"
+        search_findings = location_search.run(search_terms)
         
-        if "error" in data:
-            # Fallback to OpenWeatherMap if WeatherAPI fails
-            owm_url = f"http://api.openweathermap.org/data/2.5/weather?q={location}&appid=9b929a9d9c3f5a5e610cbf9163121d1e&units=metric"
-            owm_response = requests.get(owm_url)
-            owm_data = owm_response.json()
-            
-            if owm_data.get("cod") != 200:
-                return f"Error: {data.get('error', {}).get('message', 'Weather data not available')}"
-            
-            return (f"Weather in {location}: "
-                    f"{owm_data['main']['temp']}°C, "
-                    f"{owm_data['weather'][0]['description']}. "
-                    f"Feels like {owm_data['main']['feels_like']}°C. "
-                    f"Humidity: {owm_data['main']['humidity']}%, "
-                    f"Wind: {owm_data['wind']['speed']} m/s")
-        
-        return (f"Weather in {location}: "
-                f"{data['current']['temp_c']}°C, "
-                f"{data['current']['condition']['text']}. "
-                f"Feels like {data['current']['feelslike_c']}°C. "
-                f"Humidity: {data['current']['humidity']}%, "
-                f"Wind: {data['current']['wind_kph']} km/h")
-    except Exception as e:
-        return f"Weather data unavailable: {str(e)}"
-
-@tool
-def get_top_attractions(location: str) -> str:
-    """Get top tourist attractions for a given location."""
-    try:
-        # Use DuckDuckGo with enhanced query
-        search = DuckDuckGoSearchAPIWrapper()
-        query = f"top 10 tourist attractions in {location} with descriptions"
-        raw_results = search.run(query)
-        
-        # Use LLM to summarize the raw search results
-        summary_prompt = (
-            f"Identify and summarize the top 5 attractions in {location} based on this information:"
-            f"\n\n{raw_results}\n\n"
-            "For each attraction, provide:"
-            "\n- Name"
-            "\n- Type (temple, beach, museum, etc.)"
-            "\n- Brief description (1 sentence)"
-            "\n- Why it's worth visiting"
-            "\nFormat as:"
-            "\n1. **Name** (Type) - Description. Why visit: ..."
+        # AI-powered content curation
+        curation_instructions = (
+            f"Extract and present the top 5 must-see attractions in {destination} from this research:"
+            f"\n\n{search_findings}\n\n"
+            "Structure each attraction with:"
+            "\n- Attraction name"
+            "\n- Category (historical site, natural wonder, cultural venue, etc.)"
+            "\n- Compelling description (single impactful sentence)"
+            "\n- Unique appeal factor"
+            "\nPresent as:"
+            "\n1. **Attraction Name** (Category) - Description. Special because: ..."
         )
         
-        return llm.invoke(summary_prompt).content
-    except Exception as e:
-        return f"Attractions search failed: {str(e)}"
+        return travel_ai_model.invoke(curation_instructions).content
+    except Exception as error:
+        return f"Unable to discover attractions: {str(error)}"
 
 @tool
-def get_accommodation_recommendations(location: str, travel_style: str) -> str:
-    """Get accommodation recommendations based on travel style."""
+def suggest_accommodation_options(destination: str, preference_style: str) -> str:
+    """Generate personalized accommodation suggestions based on traveler preferences and destination."""
     try:
-        # Use DuckDuckGo with enhanced query
-        search = DuckDuckGoSearchAPIWrapper()
-        query = f"best {travel_style.lower()} hotels and stays in {location}"
-        raw_results = search.run(query)
+        # Targeted accommodation search
+        lodging_search = DuckDuckGoSearchAPIWrapper()
+        search_parameters = f"recommended {preference_style.lower()} accommodation lodging {destination}"
+        accommodation_data = lodging_search.run(search_parameters)
         
-        # Use LLM to summarize the results
-        summary_prompt = (
-            f"Recommend 3-5 accommodation options in {location} for {travel_style} travelers:"
-            f"\n\n{raw_results}\n\n"
-            "For each option, provide:"
-            "\n- Name"
-            "\n- Type (hotel, resort, homestay, etc.)"
-            "\n- Key features"
-            "\n- Why it's good for {travel_style} travel"
-            "\nFormat as:"
-            "\n1. **Name** (Type) - Features. Why good for {travel_style}: ..."
+        # AI-driven recommendation engine
+        recommendation_logic = (
+            f"Curate 3-5 accommodation choices in {destination} perfect for {preference_style} travelers:"
+            f"\n\n{accommodation_data}\n\n"
+            "Present each option with:"
+            "\n- Property name"
+            "\n- Accommodation type (boutique hotel, resort, guesthouse, etc.)"
+            "\n- Standout amenities and features"
+            "\n- Suitability for {preference_style} travel experience"
+            "\nStructure as:"
+            "\n1. **Property Name** (Type) - Notable features. Perfect for {preference_style} because: ..."
         )
         
-        return llm.invoke(summary_prompt).content
-    except Exception as e:
-        return f"Accommodation search failed: {str(e)}"
+        return travel_ai_model.invoke(recommendation_logic).content
+    except Exception as error:
+        return f"Accommodation suggestions unavailable: {str(error)}"
 
-# ----------------------
-# Robust Agent Setup
-# ----------------------
 
-# Define tools for the agent
-tools = [get_current_weather, get_top_attractions, get_accommodation_recommendations]
+# Comprehensive tool suite for the travel agent
+agent_toolkit = [fetch_weather_conditions, discover_local_highlights, suggest_accommodation_options]
 
-# Create the agent prompt
-prompt = ChatPromptTemplate.from_messages([
+# Advanced conversational prompt engineering
+travel_agent_instructions = ChatPromptTemplate.from_messages([
     ("system", 
-     "You are a helpful travel assistant. Respond to user requests by:"
-     "\n1. FIRST providing current weather"
-     "\n2. THEN listing top attractions"
-     "\n3. THEN giving accommodation recommendations"
-     "\n4. FINALLY offering personalized travel tips"
-     "\n\nStructure your response clearly with:"
-     "\n### Weather Report ☀️🌧️❄️"
-     "\n[weather details]"
-     "\n\n### Top Attractions 🏰🏞️🎭"
-     "\n[attractions list]"
-     "\n\n### Where to Stay 🛏️🏨"
-     "\n[accommodation options]"
-     "\n\n### Travel Tips 💡"
-     "\n[personalized tips]"
-     "\n\nUse emojis and keep information concise. If any tool fails, skip that section and explain."),
+     "You are an expert travel consultant with deep local knowledge. Your approach:"
+     "\n1. START with real-time weather insights and climate considerations"
+     "\n2. FOLLOW with curated local attractions and experiences"
+     "\n3. CONTINUE with personalized accommodation recommendations"
+     "\n4. CONCLUDE with insider travel wisdom and practical advice"
+     "\n\nOrganize your expertise as:"
+     "\n### Climate & Weather Insights ☀️🌦️❄️"
+     "\n[detailed weather analysis]"
+     "\n\n### Premier Destinations & Experiences 🏛️🌄🎨"
+     "\n[curated attraction highlights]"
+     "\n\n### Accommodation Recommendations 🏨🛏️🏡"
+     "\n[personalized lodging options]"
+     "\n\n### Expert Travel Insights 🧳💡"
+     "\n[professional tips and recommendations]"
+     "\n\nMaintain an engaging tone with strategic emoji use. Handle any service disruptions gracefully."),
     ("human", "{input}"),
     ("placeholder", "{agent_scratchpad}"),
 ])
 
-# Create the agent
-agent = create_tool_calling_agent(llm, tools, prompt)
+# Travel intelligence agent construction
+travel_consultant = create_tool_calling_agent(travel_ai_model, agent_toolkit, travel_agent_instructions)
 
-# Create agent executor
-agent_executor = AgentExecutor(
-    agent=agent,
-    tools=tools,
+# Executive agent with enhanced capabilities
+travel_agent_executor = AgentExecutor(
+    agent=travel_consultant,
+    tools=agent_toolkit,
     verbose=True,
     handle_parsing_errors=True,
     max_iterations=4,
     return_intermediate_steps=True
 )
 
-# ----------------------
-# Enhanced Streamlit UI
-# ----------------------
+st.set_page_config(page_title="🗺️ Smart Travel Companion", page_icon="🧳", layout="wide")
+st.title("🗺️ Your Personal Travel Intelligence Assistant")
 
-st.set_page_config(page_title="🌍 Travel Assistant AI", page_icon="✈️", layout="wide")
-st.title("🌍 Intelligent Travel Assistant")
-
-# Sidebar for settings
+# Advanced preference panel
 with st.sidebar:
-    st.header("⚙️ Travel Preferences")
-    location = st.text_input("Destination", "Chennai")
-    travel_style = st.selectbox("Travel Style", 
+    st.header("🎯 Travel Customization")
+    chosen_destination = st.text_input("Target Destination", "Chennai")
+    journey_type = st.selectbox("Journey Style", 
                                ["Adventure", "Relaxation", "Cultural", "Foodie", "Family", "Business", "Spiritual"])
-    travel_days = st.slider("Trip Duration (days)", 1, 14, 3)
-    budget = st.selectbox("Budget", ["Budget", "Mid-range", "Luxury"])
+    trip_length = st.slider("Journey Duration (days)", 1, 14, 3)
+    spending_tier = st.selectbox("Budget Category", ["Budget", "Mid-range", "Luxury"])
     
-    if st.button("🧹 Clear History"):
-        st.session_state.messages = []
+    if st.button("🔄 Reset Conversation"):
+        st.session_state.chat_history = []
         st.rerun()
 
-# Initialize chat history
-if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Where would you like to travel today? 🌎"}]
+# Conversation memory initialization
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = [{"role": "assistant", "content": "Ready to plan your next adventure? Tell me where you'd like to explore! 🌍"}]
 
-# Display chat messages
-for message in st.session_state.messages:
-    avatar = "🧑‍💻" if message["role"] == "user" else "🤖"
-    with st.chat_message(message["role"], avatar=avatar):
-        st.markdown(message["content"])
+# Dynamic chat interface
+for chat_entry in st.session_state.chat_history:
+    user_icon = "👤" if chat_entry["role"] == "user" else "🤖"
+    with st.chat_message(chat_entry["role"], avatar=user_icon):
+        st.markdown(chat_entry["content"])
 
-# User input
-if prompt := st.chat_input("Ask about travel destinations..."):
-    # Add user message to chat history
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# Interactive query processing
+if user_query := st.chat_input("Describe your travel dreams..."):
+    # Archive user input
+    st.session_state.chat_history.append({"role": "user", "content": user_query})
     
     # Display user message
-    with st.chat_message("user", avatar="🧑‍💻"):
-        st.markdown(prompt)
+    with st.chat_message("user", avatar="👤"):
+        st.markdown(user_query)
     
-    # Get assistant response
+    # Generate intelligent response
     with st.chat_message("assistant", avatar="🤖"):
-        with st.spinner("✈️ Planning your trip..."):
+        with st.spinner("🌟 Crafting your personalized travel guide..."):
             try:
-                # Get travel information
-                response = agent_executor.invoke(
-                    {"input": f"Provide comprehensive travel information for {location} "
-                              f"for a {travel_days}-day {travel_style.lower()} trip with {budget} budget"}
+                # Execute comprehensive travel analysis
+                travel_intelligence = travel_agent_executor.invoke(
+                    {"input": f"Create a complete travel guide for {chosen_destination} "
+                              f"optimized for a {trip_length}-day {journey_type.lower()} experience within {spending_tier} budget constraints"}
                 )
                 
-                # Display response
-                full_response = st.empty()
-                full_response.markdown(response["output"])
+                # Present the curated response
+                response_container = st.empty()
+                response_container.markdown(travel_intelligence["output"])
                 
-                # Add assistant response to chat history
-                st.session_state.messages.append(
-                    {"role": "assistant", "content": response["output"]}
+                # Archive assistant response
+                st.session_state.chat_history.append(
+                    {"role": "assistant", "content": travel_intelligence["output"]}
                 )
                 
-                # Show debug info in expander
-                with st.expander("🔍 Debug Details"):
-                    st.write("**Intermediate Steps:**")
-                    for step in response.get("intermediate_steps", []):
-                        st.json(step)
+                # Technical insight panel
+                with st.expander("🔧 Processing Intelligence"):
+                    st.write("**Agent Processing Steps:**")
+                    for processing_step in travel_intelligence.get("intermediate_steps", []):
+                        st.json(processing_step)
                 
-            except Exception as e:
-                error_msg = f"⚠️ Error: {str(e)}"
-                st.error(error_msg)
-                st.session_state.messages.append(
-                    {"role": "assistant", "content": error_msg}
+            except Exception as processing_error:
+                error_notification = f"🚨 Service Interruption: {str(processing_error)}"
+                st.error(error_notification)
+                st.session_state.chat_history.append(
+                    {"role": "assistant", "content": error_notification}
                 )
 
-# Add footer
+# Application footer with attribution
 st.divider()
 st.caption("""
-    Powered by: 
+    Intelligence Powered by: 
     <img src="https://www.gstatic.com/lamda/images/gemini_sparkle_resting_v2_darkmode_2d4785dff9491523d32a.svg" width="20"> Google Gemini | 
-    <img src="https://langchain.com/img/brand/theme-image.png" width="20"> LangChain | 
-    WeatherAPI.com
+    <img src="https://langchain.com/img/brand/theme-image.png" width="20"> LangChain Framework | 
+    WeatherAPI.com Services
     """, unsafe_allow_html=True)
 
-# Add some styling
+# Custom styling enhancements
 st.markdown("""
     <style>
     .stChatFloatingInputContainer {
-        bottom: 20px;
+        bottom: 25px;
     }
     .stSpinner > div > div {
-        border-top-color: #ff4b4b;
+        border-top-color: #00d4aa;
     }
     .st-b7 {
-        background-color: #f0f2f6;
+        background-color: #f8fafc;
     }
     .st-c0 {
         background-color: #ffffff;
     }
     .st-emotion-cache-4oy321 {
-        background-color: #f0f5ff;
-        border-radius: 10px;
-        padding: 15px;
-        margin-bottom: 15px;
+        background-color: #f0f9ff;
+        border-radius: 12px;
+        padding: 18px;
+        margin-bottom: 18px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .stButton > button {
+        background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        transition: transform 0.2s;
+    }
+    .stButton > button:hover {
+        transform: translateY(-2px);
     }
     </style>
     """, unsafe_allow_html=True)
