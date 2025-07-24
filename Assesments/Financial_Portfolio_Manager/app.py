@@ -2,175 +2,170 @@ import streamlit as st
 import json
 import autogen
 from autogen import AssistantAgent, UserProxyAgent
-
-
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
-api_key = os.getenv('GOOGLE_API_KEY')  
-if not api_key:
-    raise ValueError("Gemini API key missing!")
+GEMINI_KEY = os.getenv('GOOGLE_API_KEY')
+if not GEMINI_KEY:
+    raise RuntimeError("Missing Gemini API key.")
 
-
-config_list_gemini = [{
+GEMINI_CONFIG = [{
     "model": "gemini-2.5-flash",
-    "api_key": api_key,
+    "api_key": GEMINI_KEY,
     "api_type": "google"
 }]
 
+st.title("🪙 Smart Wealth Insights")
+st.markdown("Let AI craft your custom investment roadmap.")
 
-st.title("💼 Financial Portfolio Manager")
-st.markdown("AI-powered personalized investment report")
+with st.form("wealth_form"):
+    income = st.text_input("Yearly Income (₹)", placeholder="1500000")
+    user_age = st.number_input("Age", min_value=18, max_value=100, step=1)
+    yearly_spend = st.text_input("Yearly Spending (₹)", placeholder="600000")
+    aspirations = st.text_area("Aspirations", placeholder="Early retirement, world travel, home purchase")
+    risk_pref = st.selectbox("Risk Appetite", ["Low", "Medium", "High"])
 
-with st.form("financial_form"):
-    salary = st.text_input("Annual Salary (₹)", placeholder="1200000")
-    age = st.number_input("Your Age", min_value=18, max_value=100, step=1)
-    expenses = st.text_input("Annual Expenses (₹)", placeholder="500000")
-    goals = st.text_area("Financial Goals", placeholder="Retirement in 20 years, buying a home in 5 years")
-    risk = st.selectbox("Risk Tolerance", ["Conservative", "Moderate", "Aggressive"])
+    st.subheader("💰 Asset Breakdown")
+    mf_holdings = st.text_area("Mutual Funds (Name, Category, Value)", placeholder="HDFC Flexi Cap - Equity - ₹3L")
+    equity_holdings = st.text_area("Stocks (Name, Qty, Buy Price)", placeholder="TCS - 8 shares - ₹3500")
+    property_assets = st.text_area("Real Estate (Type, City, Value)", placeholder="Villa - Pune - ₹20L")
+    fd_total = st.text_input("Fixed Deposits (₹)", placeholder="400000")
 
-    st.subheader("🪙 Portfolio Details")
-    mutual_funds = st.text_area("Mutual Funds (Name + Type + Amount)", placeholder="Axis Bluechip - Equity - ₹2L")
-    stocks = st.text_area("Stocks (Name + Qty + Buy Price)", placeholder="Infosys - 10 shares - ₹1500")
-    real_estate = st.text_area("Real Estate (Type + Location + Value)", placeholder="Residential Apartment - Mumbai - ₹10L")
-    fixed_deposit = st.text_input("Fixed Deposit (Total ₹)", placeholder="500000")
+    trigger = st.form_submit_button("Get My Report")
 
-    submit = st.form_submit_button("Generate Report")
+# --- AGENT DEFINITIONS ---
 
-
-portfolio_analyst = AssistantAgent(
-    name="PortfolioAnalyst",
-    llm_config={"config_list": config_list_gemini},
+profile_evaluator = AssistantAgent(
+    name="ProfileEvaluator",
+    llm_config={"config_list": GEMINI_CONFIG},
     system_message="""
-    Analyze the user's portfolio and determine investment strategy. 
-    Output ONLY in JSON format: {"strategy": "Growth" or "Value", "reason": "brief explanation"}
+    Review the user's financial snapshot and classify their investment orientation as either "Expansion" or "Preservation".
+    Respond strictly in JSON: {"orientation": "Expansion" or "Preservation", "justification": "short reason"}
     """
 )
 
-growth_strategist = AssistantAgent(
-    name="GrowthStrategist",
-    llm_config={"config_list": config_list_gemini},
+expansion_recommender = AssistantAgent(
+    name="ExpansionRecommender",
+    llm_config={"config_list": GEMINI_CONFIG},
     system_message="""
-    Suggest high-growth investments: mid-cap mutual funds, global ETFs, tech stocks, or crypto.
-    Output: {"recommendations": ["item1", "item2", ...], "rationale": "brief explanation"}
+    For users seeking growth, suggest dynamic assets: emerging market funds, innovative tech stocks, or digital assets.
+    Reply in JSON: {"ideas": ["suggestion1", "suggestion2", ...], "why": "short rationale"}
     """
 )
 
-value_strategist = AssistantAgent(
-    name="ValueStrategist",
-    llm_config={"config_list": config_list_gemini},
+preservation_recommender = AssistantAgent(
+    name="PreservationRecommender",
+    llm_config={"config_list": GEMINI_CONFIG},
     system_message="""
-    Suggest stable investments: bonds, blue-chip stocks, or government schemes.
-    Output: {"recommendations": ["item1", "item2", ...], "rationale": "brief explanation"}
+    For users prioritizing safety, recommend: government bonds, blue-chip equities, or secure deposits.
+    Reply in JSON: {"ideas": ["suggestion1", "suggestion2", ...], "why": "short rationale"}
     """
 )
 
-financial_advisor = AssistantAgent(
-    name="FinancialAdvisor",
-    llm_config={"config_list": config_list_gemini},
+report_compiler = AssistantAgent(
+    name="ReportCompiler",
+    llm_config={"config_list": GEMINI_CONFIG},
     system_message="""
-    Compile a comprehensive financial report with:
-    1. Portfolio Analysis Summary
-    2. Recommended Strategy
-    3. Specific Investment Recommendations
-    4. Implementation Plan
-    5. Risk Assessment
-    Format the report in Markdown. Add "TERMINATE" at the end when done.
+    Assemble a detailed investment report with:
+    - Overview of user's finances
+    - Chosen investment orientation
+    - Tailored asset suggestions
+    - Step-by-step action plan
+    - Risk considerations
+    Format in Markdown. End with "END-OF-REPORT".
     """
 )
 
-user_proxy = UserProxyAgent(
-    name="UserProxy",
+user_agent = UserProxyAgent(
+    name="UserAgent",
     human_input_mode="NEVER",
     max_consecutive_auto_reply=5,
-    is_termination_msg=lambda x: "TERMINATE" in x.get("content", ""),
+    is_termination_msg=lambda x: "END-OF-REPORT" in x.get("content", ""),
     code_execution_config=False
 )
 
-def extract_strategy(content):
+def parse_orientation(json_str):
     try:
-        data = json.loads(content.strip())
-        return data.get("strategy", "Growth")
-    except:
-        return "Growth"
+        obj = json.loads(json_str.strip())
+        return obj.get("orientation", "Expansion")
+    except Exception:
+        return "Expansion"
 
+def build_user_profile():
+    return f"""
+Profile:
+- Age: {user_age}
+- Income: ₹{income}
+- Spending: ₹{yearly_spend}
+- Risk Appetite: {risk_pref}
+- Aspirations: {aspirations}
 
-def manage_investment_portfolio():
-    message = f"""
-User Profile:
-- Age: {age}
-- Annual Salary: ₹{salary}
-- Annual Expenses: ₹{expenses}
-- Risk Tolerance: {risk}
-- Financial Goals: {goals}
-
-Current Portfolio:
-- Mutual Funds: {mutual_funds or 'None'}
-- Stocks: {stocks or 'None'}
-- Real Estate: {real_estate or 'None'}
-- Fixed Deposit: ₹{fixed_deposit or '0'}
+Assets:
+- Mutual Funds: {mf_holdings or 'None'}
+- Stocks: {equity_holdings or 'None'}
+- Real Estate: {property_assets or 'None'}
+- Fixed Deposits: ₹{fd_total or '0'}
 """
 
-    # Step 1: Portfolio Analysis
-    analysis_result = user_proxy.initiate_chat(
-        portfolio_analyst,
-        message=message,
+def generate_wealth_report():
+    profile_text = build_user_profile()
+
+    # 1. Evaluate profile for investment orientation
+    orientation_result = user_agent.initiate_chat(
+        profile_evaluator,
+        message=profile_text,
         summary_method="last_msg",
         silent=True
     )
-    analysis_summary = analysis_result.chat_history[-1]["content"]
-    strategy = extract_strategy(analysis_summary)
+    orientation_json = orientation_result.chat_history[-1]["content"]
+    orientation = parse_orientation(orientation_json)
 
-    # Step 2: Get Recommendations
-    agent = growth_strategist if strategy == "Growth" else value_strategist
-    recommendations_result = user_proxy.initiate_chat(
-        agent,
-        message=f"{message}\nStrategy: {strategy}",
+    # 2. Get asset suggestions
+    recommender = expansion_recommender if orientation == "Expansion" else preservation_recommender
+    ideas_result = user_agent.initiate_chat(
+        recommender,
+        message=f"{profile_text}\nOrientation: {orientation}",
         summary_method="last_msg",
         silent=True
     )
-    recommendations_summary = recommendations_result.chat_history[-1]["content"]
+    ideas_json = ideas_result.chat_history[-1]["content"]
 
-    # Step 3: Generate Final Report
-    report_result = user_proxy.initiate_chat(
-        financial_advisor,
+    # 3. Compile the final report
+    report_result = user_agent.initiate_chat(
+        report_compiler,
         message=f"""
-Generate a comprehensive financial report based on:
-
 User Profile:
-{message}
+{profile_text}
 
-Portfolio Analysis:
-{analysis_summary}
+Orientation Analysis:
+{orientation_json}
 
-Investment Recommendations:
-{recommendations_summary}
+Asset Suggestions:
+{ideas_json}
 
-Include these sections:
-1. Portfolio Analysis Summary
-2. Recommended Strategy
-3. Specific Investment Recommendations
-4. Implementation Plan
-5. Risk Assessment
+Sections to include:
+- Financial Overview
+- Investment Orientation
+- Asset Suggestions
+- Action Plan
+- Risk Review
 """,
         summary_method="last_msg",
         silent=True
     )
+    report_md = report_result.chat_history[-1]["content"]
+    if "END-OF-REPORT" in report_md:
+        return report_md.split("END-OF-REPORT")[0].strip()
+    return report_md
 
-    # Extract the actual report content
-    report_content = report_result.chat_history[-1]["content"]
-    if "TERMINATE" in report_content:
-        return report_content.split("TERMINATE")[0].strip()
-    return report_content
-
-# ⏳ Generate and Display
-if submit:
-    with st.spinner("🧠 Analyzing your portfolio... This may take 1-2 minutes"):
+# --- UI OUTPUT ---
+if trigger:
+    with st.spinner("🔎 Reviewing your finances... Please wait a moment."):
         try:
-            result = manage_investment_portfolio()
-            st.subheader("📊 Your Personalized Financial Report")
-            st.markdown(result)
-        except Exception as e:
-            st.error(f"Error generating report: {str(e)}")
-            st.info("Please check your inputs and try again. If the problem persists, try reducing the amount of text in your inputs.")
+            output = generate_wealth_report()
+            st.subheader("📈 Your Wealth Strategy Report")
+            st.markdown(output)
+        except Exception as err:
+            st.error(f"Could not generate report: {str(err)}")
+            st.info("Please review your entries and try again. If issues persist, simplify your inputs.")
