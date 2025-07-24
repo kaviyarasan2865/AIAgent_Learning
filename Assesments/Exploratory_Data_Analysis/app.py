@@ -4,159 +4,141 @@ import streamlit as st
 import google.generativeai as genai
 from autogen.agentchat import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
 from dotenv import load_dotenv
+
 load_dotenv()
 
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    raise RuntimeError("Missing GEMINI_API_KEY in environment.")
 
-api_key = os.getenv("GEMINI_API_KEY")
-if not api_key:
-    raise ValueError("GEMINI_API_KEY not found in environment variables.")
+genai.configure(api_key=GEMINI_API_KEY)
 
-genai.configure(api_key=api_key)
+def gemini_respond(prompt, model="models/gemini-1.5-flash"):
+    return genai.GenerativeModel(model).generate_content(prompt).text
 
-def gemini_call(prompt, model_name="models/gemini-1.5-flash"):
-    return genai.GenerativeModel(model_name).generate_content(prompt).text
-
-# ===== Agent Definitions =====
-class DataPrepAgent(AssistantAgent):
+# === Custom Agent Definitions ===
+class CleanerAgent(AssistantAgent):
     def generate_reply(self, messages, sender, config=None):
-        df = st.session_state["df"]
-        prompt = f"""You are a Data Cleaning Agent.
-- Handle missing values
-- Fix data types
-- Remove duplicates
+        df = st.session_state["dataset"]
+        prompt = (
+            "Act as a Data Cleaning Specialist.\n"
+            "- Identify and handle missing values\n"
+            "- Correct data types\n"
+            "- Remove duplicates\n"
+            f"Sample data:\n{df.head().to_string()}\n"
+            f"Stats:\n{df.describe(include='all').to_string()}\n"
+            "Provide Python code for cleaning and a brief rationale."
+        )
+        return gemini_respond(prompt)
 
-Dataset head:
-{df.head().to_string()}
-
-Summary stats:
-{df.describe(include='all').to_string()}
-
-Return Python code for preprocessing and a short explanation."""
-        return gemini_call(prompt)
-
-class EDAAgent(AssistantAgent):
+class ExplorerAgent(AssistantAgent):
     def generate_reply(self, messages, sender, config=None):
-        df = st.session_state["df"]
-        prompt = f"""You are an EDA Agent.
-- Provide summary statistics
-- Extract at least 3 insights
-- Suggest visualizations
+        df = st.session_state["dataset"]
+        prompt = (
+            "You are an Exploratory Data Analyst.\n"
+            "- Summarize the dataset\n"
+            "- Extract at least three interesting insights\n"
+            "- Recommend visualizations\n"
+            f"Sample data:\n{df.head().to_string()}"
+        )
+        return gemini_respond(prompt)
 
-Dataset head:
-{df.head().to_string()}"""
-        return gemini_call(prompt)
-
-class ReportGeneratorAgent(AssistantAgent):
+class SummaryAgent(AssistantAgent):
     def generate_reply(self, messages, sender, config=None):
-        insights = st.session_state.get("eda_output", "")
-        prompt = f"""You are a Report Generator.
-Create a clean EDA report based on insights:
+        findings = st.session_state.get("explore_output", "")
+        prompt = (
+            "You are a Data Summary Writer.\n"
+            "Draft a concise EDA report using these insights:\n"
+            f"{findings}\n"
+            "Include:\n"
+            "- Overview\n"
+            "- Main Discoveries\n"
+            "- Visualization Ideas\n"
+            "- Final Thoughts"
+        )
+        return gemini_respond(prompt)
 
-{insights}
-
-Include:
-- Overview
-- Key Findings
-- Visual Suggestions
-- Summary conclusion."""
-        return gemini_call(prompt)
-
-class CriticAgent(AssistantAgent):
+class ReviewerAgent(AssistantAgent):
     def generate_reply(self, messages, sender, config=None):
-        report = st.session_state.get("report_output", "")
-        prompt = f"""You are a Critic Agent.
-Review the EDA report:
+        report = st.session_state.get("summary_output", "")
+        prompt = (
+            "You are a Data Report Reviewer.\n"
+            "Evaluate the following EDA report for clarity, accuracy, and completeness. Suggest improvements.\n"
+            f"{report}"
+        )
+        return gemini_respond(prompt)
 
-{report}
-
-Comment on clarity, accuracy, completeness, and suggest improvements."""
-        return gemini_call(prompt)
-
-class ExecutorAgent(AssistantAgent):
+class CodeVerifierAgent(AssistantAgent):
     def generate_reply(self, messages, sender, config=None):
-        code = st.session_state.get("prep_output", "")
-        prompt = f"""You are an Executor Agent.
-Validate the following data preprocessing code:
+        code = st.session_state.get("clean_output", "")
+        prompt = (
+            "You are a Python Code Validator.\n"
+            "Check if this data cleaning code is executable and correct. Suggest fixes if needed.\n"
+            f"{code}"
+        )
+        return gemini_respond(prompt)
 
-{code}
-
-- Is it runnable?
-- Suggest corrections if needed."""
-        return gemini_call(prompt)
-
-# ===== Admin / Proxy Agent =====
-admin_agent = UserProxyAgent(
-    name="Admin",
+# === Admin Proxy Agent ===
+orchestrator = UserProxyAgent(
+    name="Orchestrator",
     human_input_mode="NEVER",
-    code_execution_config=False  # disables Docker requirement
+    code_execution_config=False
 )
 
-# ===== Streamlit UI =====
+# === Streamlit UI ===
 st.set_page_config(layout="wide")
-st.title("🔍 Agentic EDA with Gemini + Autogen")
-st.markdown("Upload a CSV file and let our multi-agent system analyze it step-by-step.")
+st.title("📊 Gemini-Powered EDA Workflow")
+st.markdown("Upload a CSV and let a team of agents analyze and critique your data step by step.")
 
-uploaded = st.file_uploader("📁 Upload CSV", type=["csv"])
-if uploaded:
-    df = pd.read_csv(uploaded)
-    st.session_state["df"] = df
-    st.subheader("📄 Raw Dataset Preview")
-    st.dataframe(df.head())
+uploaded_file = st.file_uploader("📁 Upload your CSV file", type=["csv"])
+if uploaded_file:
+    data = pd.read_csv(uploaded_file)
+    st.session_state["dataset"] = data
+    st.subheader("🔎 Data Preview")
+    st.dataframe(data.head())
 
-    if st.button("🚀 Run Agentic EDA"):
-        with st.spinner("Initializing agents..."):
-            agents = [
-                admin_agent,
-                DataPrepAgent(name="DataPrep"),
-                EDAAgent(name="EDA"),
-                ReportGeneratorAgent(name="ReportGen"),
-                CriticAgent(name="Critic"),
-                ExecutorAgent(name="Executor"),
+    if st.button("Start EDA Agents"):
+        with st.spinner("Booting up agents..."):
+            agent_team = [
+                orchestrator,
+                CleanerAgent(name="Cleaner"),
+                ExplorerAgent(name="Explorer"),
+                SummaryAgent(name="Summarizer"),
+                ReviewerAgent(name="Reviewer"),
+                CodeVerifierAgent(name="Verifier"),
             ]
-            chat = GroupChat(agents=agents, messages=[])
-            manager = GroupChatManager(groupchat=chat)
+            chat_group = GroupChat(agents=agent_team, messages=[])
+            group_mgr = GroupChatManager(groupchat=chat_group)
 
-        with st.spinner("Running multi-agent system..."):
+        with st.spinner("Agents are working through your data..."):
+            # --- Data Cleaning ---
+            clean_code = agent_team[1].generate_reply([], "Orchestrator")
+            st.session_state["clean_output"] = clean_code
+            with st.expander("🧹 Cleaning Code & Notes", expanded=True):
+                st.code(clean_code, language="python")
 
-            # ===== Data Preparation Output =====
-            prep = agents[1].generate_reply([], "Admin")
-            print("\n===== 🧹 DataPrepAgent Output =====")
-            print(prep)
-            st.session_state["prep_output"] = prep
-            with st.expander("🧹 Data Preparation Output", expanded=True):
-                st.markdown("**Python Code:**")
-                st.code(prep, language="python")
+            # --- EDA Insights ---
+            explore = agent_team[2].generate_reply([], "Orchestrator")
+            st.session_state["explore_output"] = explore
+            with st.expander("📈 EDA Insights", expanded=True):
+                st.markdown(explore)
 
-            # ===== EDA Agent Output =====
-            eda_out = agents[2].generate_reply([], "Admin")
-            print("\n===== 📊 EDAAgent Output =====")
-            print(eda_out)
-            st.session_state["eda_output"] = eda_out
-            with st.expander("📊 EDA Insights", expanded=True):
-                st.markdown(eda_out)
+            # --- Report Generation ---
+            summary = agent_team[3].generate_reply([], "Orchestrator")
+            st.session_state["summary_output"] = summary
+            with st.expander("📝 EDA Report", expanded=True):
+                st.markdown(summary)
 
-            # ===== Report Generation =====
-            report = agents[3].generate_reply([], "Admin")
-            print("\n===== 📄 ReportGeneratorAgent Output =====")
-            print(report)
-            st.session_state["report_output"] = report
-            with st.expander("📄 EDA Report", expanded=True):
-                st.markdown(report)
+            # --- Critique ---
+            review = agent_team[4].generate_reply([], "Orchestrator")
+            with st.expander("🧐 Report Review", expanded=False):
+                st.markdown(review)
 
-            # ===== Critic Feedback =====
-            critique = agents[4].generate_reply([], "Admin")
-            print("\n===== 🧐 CriticAgent Output =====")
-            print(critique)
-            with st.expander("🧐 Critic Agent Feedback", expanded=False):
-                st.markdown(critique)
+            # --- Code Validation ---
+            verify = agent_team[5].generate_reply([], "Orchestrator")
+            with st.expander("✅ Code Validation", expanded=False):
+                st.markdown(verify)
 
-            # ===== Code Execution Check =====
-            exec_feedback = agents[5].generate_reply([], "Admin")
-            print("\n===== ✅ ExecutorAgent Output =====")
-            print(exec_feedback)
-            with st.expander("✅ Executor Agent Validation", expanded=False):
-                st.markdown(exec_feedback)
-
-        st.success("✔️ Agentic EDA completed successfully.")
+        st.success("EDA pipeline finished! Review the outputs above.")
 else:
-    st.info("Upload a CSV file above to begin.")
+    st.info("Please upload a CSV file to get started.")
