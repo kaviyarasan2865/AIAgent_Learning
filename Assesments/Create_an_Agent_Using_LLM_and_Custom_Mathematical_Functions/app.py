@@ -11,143 +11,124 @@ import operator
 
 load_dotenv()
 
-# Initialize Gemini LLM
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=os.getenv("GOOGLE_API_KEY"), temperature=0)
+# --- LLM Initialization ---
+llm_engine = ChatGoogleGenerativeAI(
+    model="gemini-1.5-flash",
+    google_api_key=os.getenv("GOOGLE_API_KEY"),
+    temperature=0
+)
 
-# Define the State
-class AgentState(TypedDict):
-    messages: Annotated[List[BaseMessage], operator.add]
-    user_input: str
-    agent_outcome: Optional[Union[BaseMessage, List[tuple]]]
-    intermediate_steps: List
+# --- State Definition ---
+class DialogueState(TypedDict):
+    history: Annotated[List[BaseMessage], operator.add]
+    prompt: str
+    result: Optional[Union[BaseMessage, List[tuple]]]
+    steps: List
 
-# Define math tools
+# --- Custom Math Tools ---
 @tool
-def plus(a: float, b: float) -> float:
-    """Add two numbers together. Use for addition problems."""
-    return a + b
-
-@tool
-def sub(a: float, b: float) -> float:
-    """Subtract b from a. Use for subtraction problems."""
-    return a - b
-
-@tool
-def mul(a: float, b: float) -> float:
-    """Multiply two numbers. Use for multiplication problems."""
-    return a * b
+def add_numbers(x: float, y: float) -> float:
+    """Returns the sum of x and y."""
+    return x + y
 
 @tool
-def divide(a: float, b: float) -> float:
-    """Divide a by b. Use for division problems. Returns error if dividing by zero."""
-    if b == 0:
-        return "Error: Cannot divide by zero"
-    return a / b
+def subtract_numbers(x: float, y: float) -> float:
+    """Returns the result of x minus y."""
+    return x - y
 
-# List of all available tools
-tools = [plus, sub, mul, divide]
+@tool
+def multiply_numbers(x: float, y: float) -> float:
+    """Returns the product of x and y."""
+    return x * y
 
-# System prompt to guide the agent's behavior
-system_prompt = """You are a helpful assistant that can:
-- Answer general knowledge questions
-- Perform math calculations when requested
+@tool
+def safe_divide(x: float, y: float) -> float:
+    """Divides x by y. Returns error if y is zero."""
+    if y == 0:
+        return "Error: Division by zero is undefined."
+    return x / y
 
-For math operations, always use the appropriate tools.
-For all other questions, respond using your knowledge.
+math_tools = [add_numbers, subtract_numbers, multiply_numbers, safe_divide]
 
-Format all responses clearly and helpfully."""
+# --- System Prompt ---
+assistant_prompt = """You are CalcBot, a friendly digital assistant.
+- For math, always use the provided tools.
+- For general queries, answer using your own knowledge.
+- Make your answers clear and concise.
+"""
 
-# Create the agent with tools
-agent = create_tool_calling_agent(
-    llm=llm,
-    tools=tools,
+# --- Agent Construction ---
+calc_agent = create_tool_calling_agent(
+    llm=llm_engine,
+    tools=math_tools,
     prompt=ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
+        ("system", assistant_prompt),
         MessagesPlaceholder("chat_history"),
         ("human", "{input}"),
         MessagesPlaceholder("agent_scratchpad"),
     ]),
 )
 
-# Create agent executor
-agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+calc_executor = AgentExecutor(agent=calc_agent, tools=math_tools, verbose=True)
 
-# Define nodes for the graph
-def agent_node(state: AgentState):
-    result = agent_executor.invoke({
-        "input": state["user_input"],
-        "chat_history": state["messages"]
+# --- Node Logic ---
+def calc_node(state: DialogueState):
+    agent_reply = calc_executor.invoke({
+        "input": state["prompt"],
+        "chat_history": state["history"]
     })
     return {
-        "messages": [AIMessage(content=result["output"])],
-        "agent_outcome": result["output"]
+        "history": [AIMessage(content=agent_reply["output"])],
+        "result": agent_reply["output"]
     }
 
-def tool_node(state: AgentState):
-    # This would be used if we wanted to explicitly model tool execution as a separate step
-    # For tool_calling_agent, tools are handled automatically by the agent
-    pass
+# --- Graph Construction ---
+dialogue_graph = StateGraph(DialogueState)
+dialogue_graph.add_node("calc", calc_node)
+dialogue_graph.set_entry_point("calc")
+dialogue_graph.add_edge("calc", END)
+compiled_graph = dialogue_graph.compile()
 
-# Define the graph workflow
-workflow = StateGraph(AgentState)
-
-# Add nodes
-workflow.add_node("agent", agent_node)
-# workflow.add_node("tools", tool_node)  # Not needed for tool_calling_agent
-
-# Set entry point
-workflow.set_entry_point("agent")
-
-# Define edges
-# workflow.add_edge("tools", "agent")  # Not needed for tool_calling_agent
-workflow.add_edge("agent", END)
-
-# Compile the graph
-app = workflow.compile()
-
-def run_agent(query: str, chat_history: List[BaseMessage] = []):
-    """Execute the agent with a user query using LangGraph"""
+def interact_with_agent(user_text: str, chat_msgs: List[BaseMessage] = []):
     try:
         inputs = {
-            "messages": chat_history,
-            "user_input": query
+            "history": chat_msgs,
+            "prompt": user_text
         }
-        response = app.invoke(inputs)
-        return response["agent_outcome"]
-    except Exception as e:
-        return f"Error: {str(e)}"
+        output = compiled_graph.invoke(inputs)
+        return output["result"]
+    except Exception as err:
+        return f"Error: {str(err)}"
 
-# Interactive chat interface
+# --- CLI Chat Loop ---
 if __name__ == "__main__":
-    print("Math-Q&A Agent ready! Type 'exit' to quit.")
-    chat_history = []
-    
+    print("Welcome to CalcBot! Type 'exit' to leave.")
+    chat_log = []
     while True:
         try:
-            query = input("\nYou: ")
-            if query.lower() in ['exit', 'quit']:
+            user_input = input("\nYou: ")
+            if user_input.lower() in ['exit', 'quit']:
                 break
-            if not query.strip():
+            if not user_input.strip():
                 continue
-                
-            # Convert chat history to BaseMessage format
-            messages = []
-            for item in chat_history:
-                if item["role"] == "user":
-                    messages.append(HumanMessage(content=item["content"]))
+
+            # Convert chat log to BaseMessage objects
+            formatted_history = []
+            for entry in chat_log:
+                if entry["role"] == "user":
+                    formatted_history.append(HumanMessage(content=entry["content"]))
                 else:
-                    messages.append(AIMessage(content=item["content"]))
-            
-            response = run_agent(query, messages)
-            
-            # Update chat history
-            chat_history.extend([
-                {"role": "user", "content": query},
-                {"role": "assistant", "content": str(response)}
+                    formatted_history.append(AIMessage(content=entry["content"]))
+
+            agent_response = interact_with_agent(user_input, formatted_history)
+
+            chat_log.extend([
+                {"role": "user", "content": user_input},
+                {"role": "assistant", "content": str(agent_response)}
             ])
-            print(f"Agent: {response}")
-            
+            print(f"CalcBot: {agent_response}")
+
         except KeyboardInterrupt:
             break
-        except Exception as e:
-            print(f"Error: {str(e)}")
+        except Exception as err:
+            print(f"Error: {str(err)}")
