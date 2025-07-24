@@ -1,4 +1,4 @@
-# competitor_analysis_agentic.py
+# competitor_intel_dashboard.py
 import streamlit as st
 from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -6,43 +6,36 @@ from langchain_core.messages import HumanMessage, AIMessage
 from typing import List, Dict, Callable
 import copy
 
-# Configure Streamlit
+# --- Streamlit UI Setup ---
 st.set_page_config(
-    page_title="Clothing Store Competitor Intelligence",
-    page_icon="👗",
+    page_title="Retail Competitor Radar",
+    page_icon="🧵",
     layout="centered"
 )
 
-# Create a function factory for generating replies
-def create_gemini_reply_function(api_key: str) -> Callable:
-    """Create a Gemini reply function that avoids deepcopy issues"""
-    def generate_reply(messages: List[Dict], **kwargs) -> str:
+def gemini_response_factory(api_key: str) -> Callable:
+    """Returns a function that generates Gemini LLM responses for agent messages."""
+    def responder(messages: List[Dict], **kwargs) -> str:
         try:
-            # Initialize LLM inside the function
             llm = ChatGoogleGenerativeAI(
                 model="gemini-1.5-flash",
                 google_api_key=api_key,
-                temperature=0.3,
+                temperature=0.25,
                 max_output_tokens=2048
             )
-            
-            # Convert AutoGen messages to LangChain format
             chat_history = []
-            for msg in messages:
-                if msg["role"] == "user":
-                    chat_history.append(HumanMessage(content=msg["content"]))
+            for m in messages:
+                if m["role"] == "user":
+                    chat_history.append(HumanMessage(content=m["content"]))
                 else:
-                    chat_history.append(AIMessage(content=msg["content"]))
-            
-            response = llm.invoke(chat_history)
-            return response.content
-        except Exception as e:
-            return f"Error generating response: {str(e)}"
-    
-    return generate_reply
+                    chat_history.append(AIMessage(content=m["content"]))
+            reply = llm.invoke(chat_history)
+            return reply.content
+        except Exception as exc:
+            return f"LLM error: {exc}"
+    return responder
 
-def create_agent_config(api_key: str, include_functions=True) -> Dict:
-    """Create a properly configured llm_config"""
+def build_llm_config(api_key: str, with_functions=True) -> Dict:
     config = {
         "config_list": [{
             "model": "gemini-1.5-flash",
@@ -51,144 +44,128 @@ def create_agent_config(api_key: str, include_functions=True) -> Dict:
         }],
         "timeout": 600
     }
-    
-    if include_functions:
-        config["functions"] = [create_gemini_reply_function(api_key)]
-    
+    if with_functions:
+        config["functions"] = [gemini_response_factory(api_key)]
     return config
 
-def main():
-    # UI Setup
-    st.title("👔 Clothing Store Competitor Intelligence")
-    st.subheader("Agent-powered market analysis using Gemini 1.5 Flash")
-    
+def competitor_intel_app():
+    st.title("🧵 Retail Competitor Radar")
+    st.caption("Multi-agent market intelligence for clothing stores (Gemini 1.5 Flash)")
+
     with st.sidebar:
-        st.header("Configuration")
-        gemini_api_key = st.text_input("🔑 Gemini API Key", type="password", value="")
-        location = st.text_input("📍 Location", "Koramangala, Bangalore")
-        competitors = st.slider("Number of competitors", 3, 10, 5)
-        detail_level = st.selectbox("Detail Level", ["Summary", "Detailed", "Comprehensive"])
-        generate_btn = st.button("Generate Report", type="primary")
-    
-    if generate_btn:
-        if not gemini_api_key:
-            st.error("Please enter your Gemini API key")
+        st.header("Setup")
+        api_key = st.text_input("Gemini API Key", type="password", value="")
+        area = st.text_input("Target Area", "Indiranagar, Bangalore")
+        n_competitors = st.slider("How many competitors?", 3, 10, 4)
+        report_depth = st.radio("Report Depth", ["Quick", "Standard", "In-depth"])
+        run_btn = st.button("Run Market Scan", type="primary")
+
+    if run_btn:
+        if not api_key:
+            st.error("Gemini API key required.")
             return
-            
-        with st.spinner("Agent team analyzing competitors..."):
+
+        with st.spinner("Agents are gathering competitive insights..."):
             try:
-                # Create base agent config
-                agent_config = create_agent_config(gemini_api_key, include_functions=True)
-                manager_config = create_agent_config(gemini_api_key, include_functions=False)
-                
-                # Create agents with proper configuration
-                research_analyst = AssistantAgent(
-                    name="Research_Analyst",
-                    llm_config=copy.deepcopy(agent_config),
-                    system_message=f"""
-                    As a retail market expert, analyze clothing stores in {location}.
-                    Provide:
-                    1. List of top {competitors} competitors
-                    2. Their market positioning (luxury, mid-range, budget)
-                    3. Foot traffic patterns (daily/weekly patterns)
-                    4. Peak hours analysis (busiest times)
-                    Present in clear bullet points. Detail level: {detail_level}
-                    """
+                base_config = build_llm_config(api_key, with_functions=True)
+                mgr_config = build_llm_config(api_key, with_functions=False)
+
+                # --- Agent Definitions ---
+                scout_agent = AssistantAgent(
+                    name="Scout",
+                    llm_config=copy.deepcopy(base_config),
+                    system_message=(
+                        f"You are a local retail scout. List the top {n_competitors} clothing stores in {area}."
+                        " For each, note their style (luxury, value, trendy, etc.), and estimate their busiest hours."
+                        f" Keep it concise. Report depth: {report_depth}."
+                    )
                 )
-                
-                strategy_consultant = AssistantAgent(
-                    name="Strategy_Consultant",
-                    llm_config=copy.deepcopy(agent_config),
-                    system_message=f"""
-                    As a retail strategist, using Research_Analyst's data:
-                    1. Compare price ranges and product offerings
-                    2. Identify market gaps and opportunities
-                    3. Recommend optimal strategies for:
-                       - Operating hours
-                       - Promotions timing
-                       - Competitive differentiation
-                    Make specific, actionable recommendations for {location}.
-                    """
+
+                analyst_agent = AssistantAgent(
+                    name="Analyst",
+                    llm_config=copy.deepcopy(base_config),
+                    system_message=(
+                        "You are a market analyst. Using the Scout's findings, compare pricing, product variety, and customer appeal."
+                        " Identify any market gaps or unique selling points. Suggest one opportunity for a new entrant."
+                    )
                 )
-                
-                report_compiler = AssistantAgent(
-                    name="Report_Compiler",
-                    llm_config=copy.deepcopy(agent_config),
-                    system_message=f"""
-                    Compile a professional report with these sections:
-                    ## Competitive Analysis: {location}
-                    ### 1. Competitor Overview (table format)
-                    ### 2. Market Analysis
-                    ### 3. Strategic Recommendations
-                    ### 4. Executive Summary
-                    Format for business use with {detail_level} detail.
-                    Use markdown formatting with tables where appropriate.
-                    """
+
+                advisor_agent = AssistantAgent(
+                    name="Advisor",
+                    llm_config=copy.deepcopy(base_config),
+                    system_message=(
+                        "You are a business advisor. Based on the Analyst's review, recommend:"
+                        " - Best opening hours"
+                        " - Promotional timing"
+                        " - Differentiation tactics"
+                        " Format as actionable bullet points."
+                    )
                 )
-                
-                user_proxy = UserProxyAgent(
-                    name="User_Proxy",
+
+                summary_agent = AssistantAgent(
+                    name="SummaryWriter",
+                    llm_config=copy.deepcopy(base_config),
+                    system_message=(
+                        f"Summarize the findings into a markdown business report for {area}."
+                        " Include: 1) Competitor Table, 2) Market Gaps, 3) Actionable Advice, 4) Executive Summary."
+                        f" Use {report_depth.lower()} detail. Format for easy reading."
+                    )
+                )
+
+                user_agent = UserProxyAgent(
+                    name="Retailer",
                     human_input_mode="NEVER",
                     code_execution_config=False,
                     max_consecutive_auto_reply=2,
-                    default_auto_reply="Please continue the analysis..."
+                    default_auto_reply="Continue with the next step."
                 )
-                
-                # Setup group chat
-                groupchat = GroupChat(
-                    agents=[user_proxy, research_analyst, strategy_consultant, report_compiler],
+
+                # --- Group Chat Setup ---
+                chat = GroupChat(
+                    agents=[user_agent, scout_agent, analyst_agent, advisor_agent, summary_agent],
                     messages=[],
-                    max_round=6,
+                    max_round=7,
                     speaker_selection_method="round_robin"
                 )
-                
-                manager = GroupChatManager(
-                    groupchat=groupchat,
-                    llm_config=manager_config
+                chat_mgr = GroupChatManager(groupchat=chat, llm_config=mgr_config)
+
+                # --- Start the Agent Workflow ---
+                user_agent.initiate_chat(
+                    chat_mgr,
+                    message=(
+                        f"Please generate a {report_depth.lower()} competitor intelligence report for clothing stores in {area}."
+                        f" Focus on {n_competitors} competitors. Include actionable insights for a new business."
+                    )
                 )
-                
-                # Initiate analysis
-                user_proxy.initiate_chat(
-                    manager,
-                    message=f"""
-                    Generate a {detail_level.lower()} competitor analysis for clothing stores in {location}.
-                    Analyze {competitors} competitors including:
-                    - Market positioning
-                    - Foot traffic patterns
-                    - Strategic recommendations
-                    The final report should be comprehensive and business-ready.
-                    """
-                )
-                
-                # Display results
-                st.success("Analysis Complete!")
+
+                # --- Display Results ---
+                st.success("Market scan complete!")
                 st.markdown("---")
-                
-                # Extract and display the final report
-                final_report = None
-                for msg in reversed(groupchat.messages):
-                    if msg["name"] == "Report_Compiler" and "## Competitive Analysis" in msg.get("content", ""):
-                        final_report = msg["content"]
+
+                # Find the summary report
+                report = None
+                for msg in reversed(chat.messages):
+                    if msg["name"] == "SummaryWriter" and "Competitor Table" in msg.get("content", ""):
+                        report = msg["content"]
                         break
-                
-                if final_report:
-                    st.markdown(final_report)
+
+                if report:
+                    st.markdown(report)
                     st.download_button(
                         label="Download Report",
-                        data=final_report,
-                        file_name=f"competitor_analysis_{location.replace(' ', '_')}.md",
+                        data=report,
+                        file_name=f"retail_competitor_radar_{area.replace(' ', '_')}.md",
                         mime="text/markdown"
                     )
                 else:
-                    st.warning("Final report not found. Showing full conversation:")
-                    for msg in groupchat.messages:
+                    st.warning("No summary found. Showing agent conversation:")
+                    for msg in chat.messages:
                         st.write(f"**{msg['name']}:**")
                         st.markdown(msg["content"])
                         st.markdown("---")
-                
-            except Exception as e:
-                st.error(f"Analysis error: {str(e)}")
-                st.info("Please check your API key and try again")
+            except Exception as exc:
+                st.error(f"Error during analysis: {exc}")
+                st.info("Check your API key and try again.")
 
 if __name__ == "__main__":
-    main()
+    competitor_intel_app()
